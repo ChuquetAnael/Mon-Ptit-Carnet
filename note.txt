@@ -1,2 +1,5 @@
 codex :
-    faire le systeme de tris des poissons
+    
+
+BDD :
+    espece maquante : coquette,Merlan,cernier,(Ombrine),fletan

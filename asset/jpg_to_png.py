@@ -1,11 +1,11 @@
 import os
 from PIL import Image, ImageDraw
 
-dossier_entree = "C:/Users/achuq/Pictures/Asset Carnet/New"
+dossier_entree = "C:/Users/achuq/Pictures/Asset Carnet/new"
 dossier_sortie = "C:/xampp/htdocs/Carnet-de-peche/Mon-Ptit-Carnet/asset/espece_png"
 
 # Tolérance pour la compression JPG (30 à 50 est idéal pour attraper le blanc imparfait)
-TOLERANCE = 200
+TOLERANCE = 50
 
 os.makedirs(dossier_sortie, exist_ok=True)
 

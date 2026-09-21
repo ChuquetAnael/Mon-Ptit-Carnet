@@ -5,57 +5,72 @@ try {
     $pdo = new PDO("mysql:host=$host;dbname=$dbname;charset=utf8", $user, $pass);
     $pdo->setAttribute(PDO::ATTR_ERRMODE, PDO::ERRMODE_EXCEPTION);
     
-    // On sélectionne les espèces pour lesquelles on n'a pas encore de description longue
-    $stmt = $pdo->query("SELECT ID_ESPECE, NOM_COM, NOM_SCIEN FROM ESPECE");
+    // 1. On sélectionne UNIQUEMENT les espèces qui n'ont pas encore de description
+    $stmt = $pdo->query("SELECT ID_ESPECE, NOM_COM, NOM_SCIEN FROM ESPECE WHERE DESCRIPTION IS NULL OR DESCRIPTION = ''");
     $especes = $stmt->fetchAll(PDO::FETCH_ASSOC);
     
     echo "<h1>Mise à jour encyclopédique via Wikipedia</h1>";
+    
+    if (count($especes) === 0) {
+        echo "<p>Toutes vos espèces ont déjà une description ! <a href='codex.php'>Retour au Codex</a></p>";
+        exit();
+    }
+    
     echo "<ul>";
 
+    // 2. On définit l'identité du script (User-Agent obligatoire)
+    $options = [
+        "http" => [
+            "method" => "GET",
+            "header" => "User-Agent: MonCarnetDePecheBot/1.1 (alex@test.fr)\r\n"
+        ]
+    ];
+    $contexte = stream_context_create($options);
+
+    // 3. Fonction dédiée pour interroger Wikipedia
+    function fetchWikipediaDescription($titre, $contexte) {
+        // Ajout de redirects=1 (très important) et exintro=1 (résumé uniquement)
+        $url_api = "https://fr.wikipedia.org/w/api.php?action=query&prop=extracts&exintro=1&explaintext=1&redirects=1&titles=" . urlencode($titre) . "&format=json";
+        
+        $json_response = @file_get_contents($url_api, false, $contexte);
+        
+        if ($json_response) {
+            $data = json_decode($json_response, true);
+            if (isset($data['query']['pages'])) {
+                $page = reset($data['query']['pages']);
+                // On vérifie si l'extrait existe et n'est pas vide
+                if (isset($page['extract']) && !empty(trim($page['extract']))) {
+                    return trim($page['extract']);
+                }
+            }
+        }
+        return false;
+    }
+
+    // 4. Boucle de traitement
     foreach ($especes as $espece) {
-        // L'API MediaWiki demande le titre de la page. Le nom scientifique est souvent le plus fiable pour éviter les pages d'homonymie.
-        $titre_recherche = urlencode($espece['NOM_SCIEN']); 
+        // On tente d'abord avec le nom scientifique (plus précis)
+        $description = fetchWikipediaDescription($espece['NOM_SCIEN'], $contexte);
         
-        // URL de l'API Wikipedia en français (prop=extracts récupère le texte pur sans HTML)
-        $url_api = "https://fr.wikipedia.org/w/api.php?action=query&prop=extracts&explaintext=1&titles={$titre_recherche}&format=json";
+        // Si ça échoue, on tente avec le nom commun (le Plan B)
+        if (!$description) {
+            $description = fetchWikipediaDescription($espece['NOM_COM'], $contexte);
+        }
         
-        // On récupère les données
-        // On définit l'identité de ton script
-        $options = [
-            "http" => [
-                "method" => "GET",
-                "header" => "User-Agent: MonCarnetDePecheBot/1.0 (alex@test.fr)\r\n"
-            ]
-        ];
-        $contexte = stream_context_create($options);
-
-        // On récupère les données avec l'autorisation de Wikipedia
-        $json_response = file_get_contents($url_api, false, $contexte);
-        $data = json_decode($json_response, true);
-        
-        // On fouille dans le JSON pour trouver la page
-        $pages = $data['query']['pages'];
-        $page = reset($pages); // Prend le premier élément du tableau
-
-        if (isset($page['extract'])) {
-            $texte_complet = $page['extract'];
-            
-            // L'API renvoie tout le texte. On va extraire la description générale (le début)
-            // On coupe le texte au premier grand titre de section (qui commence par "==" sur Wikipedia)
-            $parties = explode("==", $texte_complet);
-            $description_courte = trim($parties[0]); 
+        if ($description) {
+            // Nettoyage des sauts de ligne intempestifs de Wikipedia
+            $description = preg_replace("/\n{3,}/", "\n\n", $description);
             
             // Mise à jour dans la base
             $update = $pdo->prepare("UPDATE ESPECE SET DESCRIPTION = :desc WHERE ID_ESPECE = :id");
             $update->execute([
-                'desc' => $description_courte,
+                'desc' => $description,
                 'id' => $espece['ID_ESPECE']
             ]);
             
-            echo "<li>✅ <strong>" . htmlspecialchars($espece['NOM_COM']) . "</strong> : Données récupérées et sauvegardées.</li>";
+            echo "<li>✅ <strong>" . htmlspecialchars($espece['NOM_COM']) . "</strong> : Description récupérée et sauvegardée.</li>";
         } else {
-            // Si le nom scientifique ne marche pas, il faudra tester avec le nom commun à la main
-            echo "<li>❌ <strong>" . htmlspecialchars($espece['NOM_COM']) . "</strong> : Page Wikipedia introuvable avec le nom scientifique.</li>";
+            echo "<li>❌ <strong style='color:red;'>" . htmlspecialchars($espece['NOM_COM']) . "</strong> : Page introuvable ou vide sur Wikipedia (Nom scientifique et commun testés).</li>";
         }
     }
     
@@ -63,6 +78,6 @@ try {
     echo "<p>Mise à jour terminée ! <a href='codex.php'>Retour au Codex</a></p>";
 
 } catch (PDOException $e) {
-    die("Erreur : " . $e->getMessage());
+    die("Erreur de base de données : " . $e->getMessage());
 }
 ?>
