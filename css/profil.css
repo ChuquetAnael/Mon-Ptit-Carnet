@@ -1,43 +1,87 @@
-/* Styles spécifiques au profil */
-        .profile-banner {
-            width: 100%;
-            max-width: 500px; 
-            margin: 0 auto; 
-            aspect-ratio: 21 / 9; 
-            background: linear-gradient(135deg, #1e3c72 0%, #2a5298 100%);
-            background-size: cover;
-            background-position: center;
-            border-bottom-left-radius: 20px;
-            border-bottom-right-radius: 20px;
-            position: relative;
-            box-shadow: 0 4px 15px rgba(0,0,0,0.1);
-        }
-        
-        .profile-avatar-wrapper {
-            position: absolute;
-            bottom: -50px;
-            left: 50%;
-            transform: translateX(-50%);
-        }
-        
-        .profile-avatar {
-            width: 110px;
-            height: 110px;
-            border-radius: 50%;
-            border: 5px solid #f4f7f6;
-            background-color: white;
-            object-fit: cover;
-            box-shadow: 0 5px 15px rgba(0,0,0,0.15);
-            display: flex;
-            align-items: center;
-            justify-content: center;
-        }
+/* Bannière pleine largeur sur PC, adaptée sur Mobile */
+.profile-banner-responsive {
+    width: 100%;
+    height: 250px;
+    background: linear-gradient(135deg, #1e3c72 0%, #2a5298 100%);
+    background-size: cover;
+    background-position: center;
+    position: relative;
+    box-shadow: 0 4px 15px rgba(0,0,0,0.1);
+}
+@media (max-width: 768px) {
+    .profile-banner-responsive { height: 180px; border-bottom-left-radius: 20px; border-bottom-right-radius: 20px; }
+}
 
-        .profile-avatar .material-symbols-rounded {
-            font-size: 55px;
-            color: #94a3b8;
-        }
+/* Roue crantée (Déconnexion) */
+.settings-btn {
+    position: absolute;
+    top: 20px;
+    right: 20px;
+    background: rgba(0, 0, 0, 0.4);
+    backdrop-filter: blur(5px);
+    color: white;
+    width: 45px;
+    height: 45px;
+    border-radius: 50%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    transition: all 0.2s ease;
+    text-decoration: none;
+    z-index: 10;
+}
+.settings-btn:hover {
+    background: rgba(0, 0, 0, 0.7);
+    color: white;
+    transform: rotate(90deg);
+}
 
-        .profile-info {
-            margin-top: 65px;
-        }
+/* Avatar centré qui déborde */
+.avatar-wrapper {
+    position: absolute;
+    bottom: -60px;
+    left: 50%;
+    transform: translateX(-50%);
+}
+.avatar-circle {
+    width: 120px;
+    height: 120px;
+    border-radius: 50%;
+    border: 5px solid #f4f7f6;
+    background-color: white;
+    object-fit: cover;
+    box-shadow: 0 5px 15px rgba(0,0,0,0.15);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+.avatar-circle .material-symbols-rounded { font-size: 60px; color: #94a3b8; }
+
+/* Contenu principal repoussé sous l'avatar */
+.main-profile-content {
+    margin-top: 80px; 
+}
+
+/* Boutons d'onglets personnalisés (Maquette) */
+.custom-tabs .nav-link {
+    color: #6c757d;
+    background-color: #f8f9fa;
+    border: 1px solid #e9ecef;
+    transition: all 0.2s ease;
+    font-size: 1.1rem;
+}
+.custom-tabs .nav-link.active {
+    background-color: #1e3c72;
+    color: white;
+    border-color: #1e3c72;
+    box-shadow: 0 4px 10px rgba(30, 60, 114, 0.3);
+}
+
+/* Effet de survol sur les cartes */
+.hover-card {
+    transition: transform 0.2s, box-shadow 0.2s;
+}
+.hover-card:hover {
+    transform: translateY(-4px);
+    box-shadow: 0 8px 25px rgba(0,0,0,0.1) !important;
+}

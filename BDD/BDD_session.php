@@ -18,15 +18,34 @@ function getGps($exifCoord, $hemi) {
     return ($result == 0) ? null : $result;
 }
 
-// --- NOUVELLE FONCTION DE COMPRESSION ---
 function compresserImage($source, $destination, $qualite = 80, $maxWidth = 1200) {
     $info = getimagesize($source);
     if (!$info) return false;
 
-    $width = $info[0];
-    $height = $info[1];
+    // Création de l'image source selon le format
+    switch ($info['mime']) {
+        case 'image/jpeg': $image = @imagecreatefromjpeg($source); break;
+        case 'image/png':  $image = @imagecreatefrompng($source); break;
+        case 'image/webp': $image = @imagecreatefromwebp($source); break;
+        default: return false; 
+    }
+    if (!$image) return false;
 
-    // Calcul du nouveau ratio pour éviter de déformer l'image
+    // 1. CORRECTION DE LA ROTATION EXIF (Pour les smartphones)
+    $exif = @exif_read_data($source);
+    if (!empty($exif['Orientation'])) {
+        switch ($exif['Orientation']) {
+            case 3: $image = imagerotate($image, 180, 0); break;
+            case 6: $image = imagerotate($image, -90, 0); break;
+            case 8: $image = imagerotate($image, 90, 0); break;
+        }
+    }
+
+    // 2. Récupération des dimensions APRÈS la rotation
+    $width = imagesx($image);
+    $height = imagesy($image);
+
+    // Calcul du nouveau ratio
     if ($width > $maxWidth) {
         $newWidth = $maxWidth;
         $newHeight = ($height / $width) * $newWidth;
@@ -35,23 +54,11 @@ function compresserImage($source, $destination, $qualite = 80, $maxWidth = 1200)
         $newHeight = $height;
     }
 
-    // Création de l'image source selon le format
-    switch ($info['mime']) {
-        case 'image/jpeg': $image = imagecreatefromjpeg($source); break;
-        case 'image/png':  $image = imagecreatefrompng($source); break;
-        case 'image/webp': $image = imagecreatefromwebp($source); break;
-        default: return false; // Format non supporté (on fera un upload classique)
-    }
-
-    if (!$image) return false;
-
-    // Création de la nouvelle image redimensionnée
+    // 3. Redimensionnement
     $newImage = imagecreatetruecolor((int)$newWidth, (int)$newHeight);
-
-    // Redimensionnement
     imagecopyresampled($newImage, $image, 0, 0, 0, 0, (int)$newWidth, (int)$newHeight, $width, $height);
 
-    // Sauvegarde en JPEG avec la qualité souhaitée
+    // 4. Sauvegarde
     $result = imagejpeg($newImage, $destination, $qualite);
 
     // Libération de la mémoire

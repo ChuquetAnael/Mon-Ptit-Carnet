@@ -12,19 +12,22 @@ try {
     $pdo = new PDO("mysql:host=$host;dbname=$dbname;charset=utf8", $user, $pass);
     $pdo->setAttribute(PDO::ATTR_ERRMODE, PDO::ERRMODE_EXCEPTION);
 
+    $id_user = $_SESSION['user_id'];
+
     // 1. Récupération des informations de l'utilisateur
     $stmt = $pdo->prepare("SELECT PSEUDO, MAIL, DATE_CREATION, DESCRIPTION, PDP_CHEMIN, BANNIERE_CHEMIN FROM UTILISATEUR WHERE ID_UTILISATEUR = :id");
-    $stmt->execute(['id' => $_SESSION['user_id']]);
+    $stmt->execute(['id' => $id_user]);
     $profil = $stmt->fetch(PDO::FETCH_ASSOC);
 
-    // 2. NOUVEAU : Récupération des 3 dernières sessions avec le nom du spot, le type et le nombre de prises
+    // 2. Récupération des sessions avec la PREMIÈRE PHOTO renseignée
     $stmt_sessions = $pdo->prepare("
         SELECT 
             s.ID_SESSION, 
             s.DATE_DEBUT, 
             ts.NOM_TYPE_SESSION, 
             sp.NOM_SPOT,
-            COUNT(p.ID_PRISE) AS nb_prises
+            COUNT(p.ID_PRISE) AS nb_prises,
+            (SELECT p2.PHOTO_CHEMIN FROM PRISE p2 WHERE p2.ID_SESSION = s.ID_SESSION AND p2.PHOTO_CHEMIN IS NOT NULL LIMIT 1) AS premiere_photo
         FROM SESSION_P s
         LEFT JOIN TYPE_SESSION ts ON s.ID_TYPE_SESSION = ts.ID_TYPE_SESSION
         LEFT JOIN SPOT sp ON s.ID_SPOT = sp.ID_SPOT
@@ -32,10 +35,26 @@ try {
         WHERE s.ID_UTILISATEUR = :id
         GROUP BY s.ID_SESSION
         ORDER BY s.DATE_DEBUT DESC
-        LIMIT 3
+        LIMIT 10
     ");
-    $stmt_sessions->execute(['id' => $_SESSION['user_id']]);
+    $stmt_sessions->execute(['id' => $id_user]);
     $dernieres_sessions = $stmt_sessions->fetchAll(PDO::FETCH_ASSOC);
+
+    // 3. Récupération des Records Personnels (PB)
+    $stmt_pb = $pdo->prepare("
+        SELECT 
+            e.NOM_COM, 
+            e.ICONE_CHEMIN, 
+            MAX(p.TAILLE_CM) AS record_taille
+        FROM PRISE p
+        JOIN SESSION_P s ON p.ID_SESSION = s.ID_SESSION
+        JOIN ESPECE e ON p.ID_ESPECE = e.ID_ESPECE
+        WHERE s.ID_UTILISATEUR = :id AND p.TAILLE_CM IS NOT NULL
+        GROUP BY e.ID_ESPECE, e.NOM_COM, e.ICONE_CHEMIN
+        ORDER BY record_taille DESC
+    ");
+    $stmt_pb->execute(['id' => $id_user]);
+    $records_personnels = $stmt_pb->fetchAll(PDO::FETCH_ASSOC);
 
 } catch (PDOException $e) {
     die("Erreur de connexion : " . $e->getMessage());
@@ -50,119 +69,276 @@ try {
     <title>Mon Profil - Mon Carnet de Pêche</title>
     
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/css/bootstrap.min.css" rel="stylesheet">
-    
     <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@400;500;600;700&display=swap" rel="stylesheet">
     <link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Rounded:opsz,wght,FILL,GRAD@24,400,1,0" rel="stylesheet">
     
     <link href="css/style.css" rel="stylesheet">
-    <link href="css/profil.css" rel="stylesheet">
 
-</head>
-<body>
-
-    <!-- Si BANNIERE_CHEMIN existe, on remplace le fond par l'image -->
-    <header class="profile-banner" <?php if(!empty($profil['BANNIERE_CHEMIN'])) echo 'style="background-image: url(\'' . htmlspecialchars($profil['BANNIERE_CHEMIN']) . '\');"'; ?>>
+    <style>
+        /* === NOUVEAUX STYLES RESPONSIVE === */
         
-        <div class="profile-avatar-wrapper">
+        /* Bannière pleine largeur sur PC, adaptée sur Mobile */
+        .profile-banner-responsive {
+            width: 100%;
+            height: 250px;
+            background: linear-gradient(135deg, #1e3c72 0%, #2a5298 100%);
+            background-size: cover;
+            background-position: center;
+            position: relative;
+            box-shadow: 0 4px 15px rgba(0,0,0,0.1);
+        }
+        @media (max-width: 768px) {
+            .profile-banner-responsive { height: 180px; border-bottom-left-radius: 20px; border-bottom-right-radius: 20px; }
+        }
+
+        /* Roue crantée (Déconnexion) */
+        .settings-btn {
+            position: absolute;
+            top: 20px;
+            right: 20px;
+            background: rgba(0, 0, 0, 0.4);
+            backdrop-filter: blur(5px);
+            color: white;
+            width: 45px;
+            height: 45px;
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            transition: all 0.2s ease;
+            text-decoration: none;
+            z-index: 10;
+        }
+        .settings-btn:hover {
+            background: rgba(0, 0, 0, 0.7);
+            color: white;
+            transform: rotate(90deg);
+        }
+
+        /* Avatar centré qui déborde */
+        .avatar-wrapper {
+            position: absolute;
+            bottom: -60px;
+            left: 50%;
+            transform: translateX(-50%);
+        }
+        .avatar-circle {
+            width: 120px;
+            height: 120px;
+            border-radius: 50%;
+            border: 5px solid #f4f7f6;
+            background-color: white;
+            object-fit: cover;
+            box-shadow: 0 5px 15px rgba(0,0,0,0.15);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+        .avatar-circle .material-symbols-rounded { font-size: 60px; color: #94a3b8; }
+
+        /* Contenu principal repoussé sous l'avatar */
+        .main-profile-content {
+            margin-top: 80px; 
+        }
+
+        /* Boutons d'onglets personnalisés (Maquette) */
+        .custom-tabs .nav-link {
+            color: #6c757d;
+            background-color: #f8f9fa;
+            border: 1px solid #e9ecef;
+            transition: all 0.2s ease;
+            font-size: 1.1rem;
+        }
+        .custom-tabs .nav-link.active {
+            background-color: #1e3c72;
+            color: white;
+            border-color: #1e3c72;
+            box-shadow: 0 4px 10px rgba(30, 60, 114, 0.3);
+        }
+
+        /* Effet de survol sur les cartes */
+        .hover-card {
+            transition: transform 0.2s, box-shadow 0.2s;
+        }
+        .hover-card:hover {
+            transform: translateY(-4px);
+            box-shadow: 0 8px 25px rgba(0,0,0,0.1) !important;
+        }
+    </style>
+</head>
+<body class="bg-light">
+
+    <!-- BANNIÈRE RESPONSIVE -->
+    <header class="profile-banner-responsive" <?php if(!empty($profil['BANNIERE_CHEMIN'])) echo 'style="background-image: url(\'' . htmlspecialchars($profil['BANNIERE_CHEMIN']) . '\');"'; ?>>
+        
+        <!-- BOUTON DÉCONNEXION (Roue crantée) -->
+        <a href="deconnexion.php" class="settings-btn" title="Se déconnecter">
+            <span class="material-symbols-rounded">settings</span>
+        </a>
+        
+        <!-- PHOTO DE PROFIL -->
+        <div class="avatar-wrapper">
             <?php if(!empty($profil['PDP_CHEMIN'])): ?>
-                <img src="<?= htmlspecialchars($profil['PDP_CHEMIN']) ?>" alt="Photo de profil" class="profile-avatar">
+                <img src="<?= htmlspecialchars($profil['PDP_CHEMIN']) ?>" alt="Photo de profil" class="avatar-circle">
             <?php else: ?>
-                <div class="profile-avatar">
+                <div class="avatar-circle">
                     <span class="material-symbols-rounded">person</span>
                 </div>
             <?php endif; ?>
         </div>
     </header>
 
-    <main class="container pb-5 mb-5">
-        <div class="profile-info text-center mb-4">
-            <h1 class="h3 fw-bold text-dark mb-1"><?= htmlspecialchars($profil['PSEUDO']) ?></h1>
-            <p class="text-muted small mb-3"><?= htmlspecialchars($profil['MAIL']) ?></p>
-            
-            <?php if(!empty($profil['DESCRIPTION'])): ?>
-                <p class="text-secondary bg-white p-3 rounded-4 shadow-sm mx-auto" style="max-width: 400px;">
-                    "<?= htmlspecialchars($profil['DESCRIPTION']) ?>"
-                </p>
-            <?php else: ?>
-                <p class="text-secondary fst-italic small">Aucune description renseignée.</p>
-            <?php endif; ?>
-        </div>
-
-        <div class="card border-0 shadow-sm rounded-4 p-3 mb-5 mx-auto" style="max-width: 400px;">
-            <a href="modifier_profil.php" class="btn btn-light d-flex align-items-center justify-content-between p-3 mb-2 rounded-3 text-decoration-none">
-                <div class="d-flex align-items-center">
-                    <span class="material-symbols-rounded text-primary me-3">edit</span>
-                    <span class="text-dark fw-medium">Modifier mon profil</span>
-                </div>
-                <span class="material-symbols-rounded text-muted">chevron_right</span>
-            </a>
-            
-            <a href="#" class="btn btn-light d-flex align-items-center justify-content-between p-3 mb-3 rounded-3 text-decoration-none">
-                <div class="d-flex align-items-center">
-                    <span class="material-symbols-rounded text-primary me-3">analytics</span>
-                    <span class="text-dark fw-medium">Mes statistiques</span>
-                </div>
-                <span class="material-symbols-rounded text-muted">chevron_right</span>
-            </a>
-
-            <a href="deconnexion.php" class="btn btn-outline-danger d-flex align-items-center justify-content-center p-3 rounded-3 fw-bold">
-                <span class="material-symbols-rounded me-2">logout</span>
-                Se déconnecter
-            </a>
-        </div>
-
-        <!-- ================= SECTION : MES DERNIÈRES SESSIONS ================= -->
-        <h5 class="fw-bold mb-3 text-dark text-center">Mes dernières sorties</h5>
-        <div class="mx-auto mb-5" style="max-width: 400px;">
-            <?php if(empty($dernieres_sessions)): ?>
-                <div class="card border-0 shadow-sm rounded-4 p-4 text-center bg-white">
-                    <span class="material-symbols-rounded text-muted mb-2" style="font-size: 36px;">history</span>
-                    <p class="text-muted small mb-0">Vous n'avez pas encore enregistré de session.</p>
-                </div>
-            <?php else: ?>
-                <?php foreach($dernieres_sessions as $sess): ?>
-                    <div class="card border-0 shadow-sm rounded-4 p-3 mb-3 bg-white">
-                        <div class="d-flex justify-content-between align-items-center mb-2">
-                            <span class="badge bg-primary rounded-pill bg-opacity-10 text-primary">
-                                <span class="material-symbols-rounded align-middle me-1" style="font-size: 14px;">calendar_today</span>
-                                <?= date('d/m/Y', strtotime($sess['DATE_DEBUT'])) ?>
-                            </span>
-                            <span class="badge bg-light text-dark border shadow-sm"><?= $sess['nb_prises'] ?> prise(s)</span>
-                        </div>
-                        <h6 class="fw-bold mb-1 text-dark">
-                            <?= !empty($sess['NOM_SPOT']) ? htmlspecialchars($sess['NOM_SPOT']) : 'Spot non précisé' ?>
-                        </h6>
-                        <p class="text-muted small mb-0 d-flex align-items-center">
-                            <span class="material-symbols-rounded me-1 text-secondary" style="font-size: 16px;">phishing</span>
-                            <?= !empty($sess['NOM_TYPE_SESSION']) ? htmlspecialchars($sess['NOM_TYPE_SESSION']) : 'Non défini' ?>
-                        </p>
-                    </div>
-                <?php endforeach; ?>
+    <main class="container pb-5 mb-5 main-profile-content">
+        
+        <!-- GRILLE CENTRALE (S'adapte aux grands écrans) -->
+        <div class="row justify-content-center">
+            <div class="col-12 col-md-10 col-lg-8">
                 
-                <div class="text-center mt-3">
-                    <a href="carnet.php" class="text-primary fw-medium text-decoration-none small">Voir tout mon carnet <span class="material-symbols-rounded align-middle" style="font-size: 16px;">arrow_forward</span></a>
+                <!-- INFOS UTILISATEUR & DESCRIPTION -->
+                <div class="text-center mb-4">
+                    <h1 class="h2 fw-bold text-dark mb-1"><?= htmlspecialchars($profil['PSEUDO']) ?></h1>
+                    
+                    <?php if(!empty($profil['DESCRIPTION'])): ?>
+                        <p class="text-secondary bg-white p-3 rounded-4 shadow-sm mt-3 mx-auto" style="font-size: 1rem; max-width: 600px;">
+                            "<?= htmlspecialchars($profil['DESCRIPTION']) ?>"
+                        </p>
+                    <?php endif; ?>
+
+                    <!-- BOUTON MODIFIER (Unique et stylisé) -->
+                    <a href="modifier_profil.php" class="btn btn-outline-primary rounded-pill px-4 py-2 mt-3 fw-bold border-2 shadow-sm">
+                        Modifier mon profil
+                    </a>
                 </div>
-            <?php endif; ?>
+
+                <hr class="my-5 text-muted opacity-25">
+
+                <!-- ONGLETS (Dernière sortie / Mes PB) -->
+                <ul class="nav nav-pills mb-4 nav-fill custom-tabs gap-2" id="profil-tabs" role="tablist">
+                    <li class="nav-item" role="presentation">
+                        <button class="nav-link active rounded-pill fw-bold py-2" id="sessions-tab" data-bs-toggle="pill" data-bs-target="#tab-sessions" type="button" role="tab">Dernière sortie</button>
+                    </li>
+                    <li class="nav-item" role="presentation">
+                        <button class="nav-link rounded-pill fw-bold py-2" id="pb-tab" data-bs-toggle="pill" data-bs-target="#tab-pb" type="button" role="tab">Mes PB</button>
+                    </li>
+                </ul>
+
+                <div class="tab-content" id="profil-tabsContent">
+                    
+                    <!-- ================= CONTENU : DERNIÈRES SORTIES ================= -->
+                    <div class="tab-pane fade show active" id="tab-sessions" role="tabpanel">
+                        <?php if(empty($dernieres_sessions)): ?>
+                            <div class="card border-0 shadow-sm rounded-4 p-5 text-center bg-white mt-4">
+                                <span class="material-symbols-rounded text-muted mb-2" style="font-size: 48px;">history</span>
+                                <p class="text-muted mb-0">Vous n'avez pas encore enregistré de session.</p>
+                            </div>
+                        <?php else: ?>
+                            <!-- Utilisation de la grille Bootstrap (2 colonnes sur tablette/PC, 1 sur mobile) -->
+                            <div class="row g-4 mt-2">
+                                <?php foreach($dernieres_sessions as $sess): ?>
+                                    <div class="col-12 col-md-6">
+                                        <!-- CARTE ENTIÈREMENT CLIQUABLE -->
+                                        <a href="detail_session.php?id=<?= $sess['ID_SESSION'] ?>" class="text-decoration-none text-dark d-block h-100 hover-card">
+                                            <div class="card border-0 shadow-sm rounded-4 bg-white overflow-hidden h-100 d-flex flex-column">
+                                                
+                                                <!-- IMAGE DE LA SESSION (Première image) -->
+                                                <div class="position-relative">
+                                                    <?php if(!empty($sess['premiere_photo'])): ?>
+                                                        <img src="<?= htmlspecialchars($sess['premiere_photo']) ?>" class="card-img-top w-100" style="height: 220px; object-fit: cover;" alt="Photo session">
+                                                    <?php else: ?>
+                                                        <div class="bg-light d-flex align-items-center justify-content-center w-100" style="height: 220px;">
+                                                            <span class="material-symbols-rounded text-muted" style="font-size: 60px;">no_photography</span>
+                                                        </div>
+                                                    <?php endif; ?>
+                                                    
+                                                    <!-- Badge de date sur l'image -->
+                                                    <span class="badge bg-dark bg-opacity-75 text-white position-absolute top-0 end-0 m-3 px-3 py-2 rounded-pill shadow-sm fs-6">
+                                                        <?= date('d/m/Y', strtotime($sess['DATE_DEBUT'])) ?>
+                                                    </span>
+                                                </div>
+                                                
+                                                <!-- INFOS SOUS L'IMAGE -->
+                                                <div class="card-body p-4 d-flex flex-column justify-content-between">
+                                                    <div>
+                                                        <h5 class="fw-bold mb-1 text-dark">
+                                                            <?= !empty($sess['NOM_SPOT']) ? htmlspecialchars($sess['NOM_SPOT']) : 'Spot non précisé' ?>
+                                                        </h5>
+                                                        <p class="text-muted mb-3 d-flex align-items-center">
+                                                            <span class="material-symbols-rounded me-2 text-primary" style="font-size: 20px;">water_drop</span>
+                                                            <?= !empty($sess['NOM_TYPE_SESSION']) ? htmlspecialchars($sess['NOM_TYPE_SESSION']) : 'Milieu non défini' ?>
+                                                        </p>
+                                                    </div>
+                                                    <div class="text-end border-top pt-3 mt-2">
+                                                        <span class="badge bg-primary bg-opacity-10 text-primary px-3 py-2 rounded-pill fs-6 fw-bold">
+                                                            <?= $sess['nb_prises'] ?> prise(s) <span class="material-symbols-rounded align-middle ms-1" style="font-size: 18px;">chevron_right</span>
+                                                        </span>
+                                                    </div>
+                                                </div>
+                                                
+                                            </div>
+                                        </a>
+                                    </div>
+                                <?php endforeach; ?>
+                            </div>
+                        <?php endif; ?>
+                    </div>
+
+                    <!-- ================= CONTENU : MES PB (Records) ================= -->
+                    <div class="tab-pane fade" id="tab-pb" role="tabpanel">
+                        <?php if(empty($records_personnels)): ?>
+                            <div class="card border-0 shadow-sm rounded-4 p-5 text-center bg-white mt-4">
+                                <span class="material-symbols-rounded text-muted mb-2" style="font-size: 48px;">emoji_events</span>
+                                <p class="text-muted mb-0">Aucun record enregistré. Renseignez la taille lors de vos prises !</p>
+                            </div>
+                        <?php else: ?>
+                            <div class="row g-3 mt-2">
+                                <?php foreach($records_personnels as $rec): ?>
+                                    <!-- Affichage en grille adaptative -->
+                                    <div class="col-12 col-md-6 col-lg-4">
+                                        <div class="card border-0 shadow-sm rounded-4 p-3 d-flex flex-row align-items-center bg-white hover-card">
+                                            
+                                            <!-- Icône du poisson -->
+                                            <div class="bg-light rounded-3 p-2 me-3 d-flex justify-content-center align-items-center" style="width: 70px; height: 70px;">
+                                                <?php if(!empty($rec['ICONE_CHEMIN'])): ?>
+                                                    <img src="<?= htmlspecialchars($rec['ICONE_CHEMIN']) ?>" alt="Icone" style="max-width: 100%; max-height: 100%; object-fit: contain;">
+                                                <?php else: ?>
+                                                    <span class="material-symbols-rounded text-secondary" style="font-size: 40px;">set_meal</span>
+                                                <?php endif; ?>
+                                            </div>
+                                            
+                                            <!-- Format maquette : Nom: XX cm -->
+                                            <div class="flex-grow-1">
+                                                <h6 class="fw-bold mb-1 text-dark fs-5">
+                                                    <?= htmlspecialchars($rec['NOM_COM']) ?> <span class="text-primary">: <?= $rec['record_taille'] ?> cm</span>
+                                                </h6>
+                                            </div>
+                                            
+                                            <span class="material-symbols-rounded text-warning fs-3 opacity-50 ms-2">emoji_events</span>
+                                        </div>
+                                    </div>
+                                <?php endforeach; ?>
+                            </div>
+                        <?php endif; ?>
+                    </div>
+
+                </div> <!-- Fin Tab Content -->
+            </div>
         </div>
     </main>
 
+    <!-- NAVIGATION FIXE (Inchangée) -->
     <nav class="navbar fixed-bottom bg-white custom-navbar border-0 shadow-lg">
         <div class="container-fluid d-flex justify-content-around align-items-end px-2">
-            
             <a href="accueil.php" class="nav-item d-flex flex-column align-items-center">
                 <span class="material-symbols-rounded">home</span>
                 <span class="menu-text">Accueil</span>
             </a>
-            
             <a href="nouvelle_session.php" class="btn-add-catch">
                 <span class="material-symbols-rounded text-white" style="font-size: 36px;">phishing</span>
             </a>
-
             <a href="profil.php" class="nav-item active d-flex flex-column align-items-center">
                 <span class="material-symbols-rounded">person</span>
                 <span class="menu-text">Profil</span>
             </a>
-            
         </div>
     </nav>
 
