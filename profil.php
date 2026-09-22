@@ -12,9 +12,30 @@ try {
     $pdo = new PDO("mysql:host=$host;dbname=$dbname;charset=utf8", $user, $pass);
     $pdo->setAttribute(PDO::ATTR_ERRMODE, PDO::ERRMODE_EXCEPTION);
 
+    // 1. Récupération des informations de l'utilisateur
     $stmt = $pdo->prepare("SELECT PSEUDO, MAIL, DATE_CREATION, DESCRIPTION, PDP_CHEMIN, BANNIERE_CHEMIN FROM UTILISATEUR WHERE ID_UTILISATEUR = :id");
     $stmt->execute(['id' => $_SESSION['user_id']]);
     $profil = $stmt->fetch(PDO::FETCH_ASSOC);
+
+    // 2. NOUVEAU : Récupération des 3 dernières sessions avec le nom du spot, le type et le nombre de prises
+    $stmt_sessions = $pdo->prepare("
+        SELECT 
+            s.ID_SESSION, 
+            s.DATE_DEBUT, 
+            ts.NOM_TYPE_SESSION, 
+            sp.NOM_SPOT,
+            COUNT(p.ID_PRISE) AS nb_prises
+        FROM SESSION_P s
+        LEFT JOIN TYPE_SESSION ts ON s.ID_TYPE_SESSION = ts.ID_TYPE_SESSION
+        LEFT JOIN SPOT sp ON s.ID_SPOT = sp.ID_SPOT
+        LEFT JOIN PRISE p ON s.ID_SESSION = p.ID_SESSION
+        WHERE s.ID_UTILISATEUR = :id
+        GROUP BY s.ID_SESSION
+        ORDER BY s.DATE_DEBUT DESC
+        LIMIT 3
+    ");
+    $stmt_sessions->execute(['id' => $_SESSION['user_id']]);
+    $dernieres_sessions = $stmt_sessions->fetchAll(PDO::FETCH_ASSOC);
 
 } catch (PDOException $e) {
     die("Erreur de connexion : " . $e->getMessage());
@@ -53,7 +74,7 @@ try {
         </div>
     </header>
 
-    <main class="container">
+    <main class="container pb-5 mb-5">
         <div class="profile-info text-center mb-4">
             <h1 class="h3 fw-bold text-dark mb-1"><?= htmlspecialchars($profil['PSEUDO']) ?></h1>
             <p class="text-muted small mb-3"><?= htmlspecialchars($profil['MAIL']) ?></p>
@@ -89,9 +110,43 @@ try {
                 Se déconnecter
             </a>
         </div>
+
+        <!-- ================= SECTION : MES DERNIÈRES SESSIONS ================= -->
+        <h5 class="fw-bold mb-3 text-dark text-center">Mes dernières sorties</h5>
+        <div class="mx-auto mb-5" style="max-width: 400px;">
+            <?php if(empty($dernieres_sessions)): ?>
+                <div class="card border-0 shadow-sm rounded-4 p-4 text-center bg-white">
+                    <span class="material-symbols-rounded text-muted mb-2" style="font-size: 36px;">history</span>
+                    <p class="text-muted small mb-0">Vous n'avez pas encore enregistré de session.</p>
+                </div>
+            <?php else: ?>
+                <?php foreach($dernieres_sessions as $sess): ?>
+                    <div class="card border-0 shadow-sm rounded-4 p-3 mb-3 bg-white">
+                        <div class="d-flex justify-content-between align-items-center mb-2">
+                            <span class="badge bg-primary rounded-pill bg-opacity-10 text-primary">
+                                <span class="material-symbols-rounded align-middle me-1" style="font-size: 14px;">calendar_today</span>
+                                <?= date('d/m/Y', strtotime($sess['DATE_DEBUT'])) ?>
+                            </span>
+                            <span class="badge bg-light text-dark border shadow-sm"><?= $sess['nb_prises'] ?> prise(s)</span>
+                        </div>
+                        <h6 class="fw-bold mb-1 text-dark">
+                            <?= !empty($sess['NOM_SPOT']) ? htmlspecialchars($sess['NOM_SPOT']) : 'Spot non précisé' ?>
+                        </h6>
+                        <p class="text-muted small mb-0 d-flex align-items-center">
+                            <span class="material-symbols-rounded me-1 text-secondary" style="font-size: 16px;">phishing</span>
+                            <?= !empty($sess['NOM_TYPE_SESSION']) ? htmlspecialchars($sess['NOM_TYPE_SESSION']) : 'Non défini' ?>
+                        </p>
+                    </div>
+                <?php endforeach; ?>
+                
+                <div class="text-center mt-3">
+                    <a href="carnet.php" class="text-primary fw-medium text-decoration-none small">Voir tout mon carnet <span class="material-symbols-rounded align-middle" style="font-size: 16px;">arrow_forward</span></a>
+                </div>
+            <?php endif; ?>
+        </div>
     </main>
 
-    <nav class="navbar fixed-bottom bg-white custom-navbar border-0">
+    <nav class="navbar fixed-bottom bg-white custom-navbar border-0 shadow-lg">
         <div class="container-fluid d-flex justify-content-around align-items-end px-2">
             
             <a href="accueil.php" class="nav-item d-flex flex-column align-items-center">

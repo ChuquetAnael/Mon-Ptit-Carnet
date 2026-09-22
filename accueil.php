@@ -7,6 +7,7 @@ if (!isset($_SESSION['user_id'])) {
 }
 
 require_once './bdd/env.php';
+require_once './BDD/BDD_accueil.php';
 
 try {
     $pdo = new PDO("mysql:host=$host;dbname=$dbname;charset=utf8", $user, $pass);
@@ -14,6 +15,9 @@ try {
 } catch (PDOException $e) {
     die("Erreur de connexion : " . $e->getMessage());
 }
+
+nettoyerImagesOrphelines($pdo, $_SESSION['user_id']);
+
 ?>
 
 <!DOCTYPE html>
