@@ -2,4 +2,12 @@ codex :
     
 
 BDD :
-    espece maquante : coquette,Merlan,cernier,(Ombrine),fletan
+    espece maquante : coquette,Merlan,cernier
+
+Ajout session :
+    On ne peut pas preciser la quantité de prise
+    L'heure de capture des prise est tjr la meme
+    Le temps (soleil) et la marre est pas recup
+
+Coté reseau sociale : 
+    Pouvoir épinglé des sessions sur son profil

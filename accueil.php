@@ -39,8 +39,11 @@ nettoyerImagesOrphelines($pdo, $_SESSION['user_id']);
     </header>
 
     <main class="container">
-        <!-- Nouveau bouton pour le Codex -->
-        <a href="codex.php" class="btn btn-white d-flex align-items-center justify-content-between p-3 mb-4 rounded-4 shadow-sm text-decoration-none bg-white border" style="border-color: rgba(42, 82, 152, 0.1) !important;">
+        <!-- Section Outils -->
+        <h2 class="h6 fw-bold text-secondary mb-3 text-uppercase">Mes Outils</h2>
+
+        <!-- Bouton pour le Codex -->
+        <a href="codex.php" class="btn btn-white d-flex align-items-center justify-content-between p-3 mb-3 rounded-4 shadow-sm text-decoration-none bg-white border" style="border-color: rgba(42, 82, 152, 0.1) !important;">
             <div class="d-flex align-items-center">
                 <div class="bg-primary bg-opacity-10 text-primary rounded-circle d-flex align-items-center justify-content-center me-3" style="width: 50px; height: 50px;">
                     <span class="material-symbols-rounded">set_meal</span>
@@ -48,6 +51,34 @@ nettoyerImagesOrphelines($pdo, $_SESSION['user_id']);
                 <div class="text-start">
                     <span class="text-dark fw-bold d-block">Codex des espèces</span>
                     <span class="text-muted small">Consulter les poissons de France</span>
+                </div>
+            </div>
+            <span class="material-symbols-rounded text-muted">chevron_right</span>
+        </a>
+
+        <!-- Nouveau bouton Boîte de Pêche -->
+        <a href="boite_peche.php" class="btn btn-white d-flex align-items-center justify-content-between p-3 mb-3 rounded-4 shadow-sm text-decoration-none bg-white border" style="border-color: rgba(42, 82, 152, 0.1) !important;">
+            <div class="d-flex align-items-center">
+                <div class="bg-warning bg-opacity-10 text-warning rounded-circle d-flex align-items-center justify-content-center me-3" style="width: 50px; height: 50px;">
+                    <span class="material-symbols-rounded">inventory_2</span>
+                </div>
+                <div class="text-start">
+                    <span class="text-dark fw-bold d-block">Ma Boîte de pêche</span>
+                    <span class="text-muted small">Gérer mes leurres et appâts</span>
+                </div>
+            </div>
+            <span class="material-symbols-rounded text-muted">chevron_right</span>
+        </a>
+
+        <!-- Nouveau bouton Mes Spots -->
+        <a href="mes_spots.php" class="btn btn-white d-flex align-items-center justify-content-between p-3 mb-4 rounded-4 shadow-sm text-decoration-none bg-white border" style="border-color: rgba(42, 82, 152, 0.1) !important;">
+            <div class="d-flex align-items-center">
+                <div class="bg-success bg-opacity-10 text-success rounded-circle d-flex align-items-center justify-content-center me-3" style="width: 50px; height: 50px;">
+                    <span class="material-symbols-rounded">location_on</span>
+                </div>
+                <div class="text-start">
+                    <span class="text-dark fw-bold d-block">Mes Spots</span>
+                    <span class="text-muted small">Gérer mes lieux de pêche</span>
                 </div>
             </div>
             <span class="material-symbols-rounded text-muted">chevron_right</span>

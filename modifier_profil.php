@@ -59,7 +59,7 @@ try {
         exit();
     }
 
-    // Récupération des données pour pré-remplir le formulaire
+    // Récupération des données pour pré-remplir le formulaire (et afficher la bannière/avatar actuelle)
     $stmt = $pdo->prepare("SELECT PSEUDO, DESCRIPTION, PDP_CHEMIN, BANNIERE_CHEMIN FROM UTILISATEUR WHERE ID_UTILISATEUR = :id");
     $stmt->execute(['id' => $_SESSION['user_id']]);
     $profil = $stmt->fetch(PDO::FETCH_ASSOC);
@@ -79,83 +79,102 @@ try {
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/css/bootstrap.min.css" rel="stylesheet">
     <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@400;500;600;700&display=swap" rel="stylesheet">
     <link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Rounded:opsz,wght,FILL,GRAD@24,400,1,0" rel="stylesheet">
+    
     <!-- CSS de Cropper.js -->
     <link href="https://cdnjs.cloudflare.com/ajax/libs/cropperjs/1.5.13/cropper.min.css" rel="stylesheet">
+    
+    <!-- LIAISON DES FICHIERS CSS EXTERNES -->
     <link href="css/style.css" rel="stylesheet">
+    <link href="css/profil.css" rel="stylesheet">
 </head>
-<body>
+<body class="bg-light">
 
-    <header class="custom-header text-white text-center py-4 shadow-sm mb-4 position-relative">
-        <a href="profil.php" class="text-white position-absolute start-0 translate-middle-y ms-3 text-decoration-none" style="top: 50%;">
+    <!-- BANNIÈRE RESPONSIVE (Reprise du profil) -->
+    <header class="profile-banner-responsive" <?php if(!empty($profil['BANNIERE_CHEMIN'])) echo 'style="background-image: url(\'' . htmlspecialchars($profil['BANNIERE_CHEMIN']) . '\');"'; ?>>
+        
+        <!-- BOUTON RETOUR (Design de la roue crantée mais à gauche) -->
+        <a href="profil.php" class="settings-btn" style="left: 20px; right: auto;" title="Retour au profil">
             <span class="material-symbols-rounded">arrow_back_ios_new</span>
         </a>
-        <h1 class="h4 mb-0 fw-semibold">Modifier Profil</h1>
+        
+        <!-- PHOTO DE PROFIL -->
+        <div class="avatar-wrapper">
+            <?php if(!empty($profil['PDP_CHEMIN'])): ?>
+                <img src="<?= htmlspecialchars($profil['PDP_CHEMIN']) ?>" alt="Photo de profil" class="avatar-circle">
+            <?php else: ?>
+                <div class="avatar-circle">
+                    <span class="material-symbols-rounded">person</span>
+                </div>
+            <?php endif; ?>
+        </div>
     </header>
 
-    <main class="container">
-        <div class="card border-0 shadow-sm rounded-4 p-4 mb-5 mx-auto" style="max-width: 500px;">
-            
-            <form id="form-profil" action="modifier_profil.php" method="POST">
+    <main class="container pb-5 mb-5 main-profile-content">
+        <div class="row justify-content-center">
+            <div class="col-12 col-md-10 col-lg-8">
                 
-                <h5 class="fw-bold mb-3 text-dark">Informations</h5>
-                <div class="mb-4">
-                    <label class="form-label text-secondary small fw-medium">Pseudo</label>
-                    <input type="text" class="form-control bg-light border-0" name="pseudo" value="<?= htmlspecialchars($profil['PSEUDO']) ?>" required>
+                <div class="text-center mb-5">
+                    <h1 class="h3 fw-bold text-dark mb-1">Modifier mon profil</h1>
+                    <p class="text-muted small">Personnalisez vos informations et vos photos</p>
                 </div>
 
-                <div class="mb-4">
-                    <label class="form-label text-secondary small fw-medium">Description de profil</label>
-                    <textarea class="form-control bg-light border-0" name="description" rows="3" placeholder="Parlez un peu de votre passion..."><?= htmlspecialchars($profil['DESCRIPTION'] ?? '') ?></textarea>
-                </div>
-
-                <hr class="my-4">
-                
-                <h5 class="fw-bold mb-3 text-dark">Personnalisation</h5>
-                
-                <div class="mb-5">
-                    <label class="form-label text-secondary small fw-medium d-block">Photo de profil</label>
-                    
-                    <?php if(!empty($profil['PDP_CHEMIN'])): ?>
-                        <div class="d-flex align-items-center mb-3">
-                            <img src="<?= htmlspecialchars($profil['PDP_CHEMIN']) ?>" alt="Actuelle" class="rounded-circle shadow-sm me-3" style="width: 80px; height: 80px; object-fit: cover; border: 3px solid #f4f7f6;">
-                            <span class="text-muted small">Image actuelle</span>
+                <!-- CARTE DU FORMULAIRE -->
+                <div class="card border-0 shadow-sm rounded-4 p-4 p-md-5 mb-5 bg-white">
+                    <form id="form-profil" action="modifier_profil.php" method="POST">
+                        
+                        <h5 class="fw-bold mb-4 text-dark d-flex align-items-center">
+                            <span class="material-symbols-rounded text-primary me-2">badge</span> Informations
+                        </h5>
+                        
+                        <div class="mb-4">
+                            <label class="form-label text-secondary small fw-bold text-uppercase">Pseudo</label>
+                            <input type="text" class="form-control bg-light border-0 p-3 rounded-4" name="pseudo" value="<?= htmlspecialchars($profil['PSEUDO']) ?>" required>
                         </div>
-                    <?php endif; ?>
-                    
-                    <input type="file" class="form-control bg-light border-0 mb-2" id="pdp-input" accept="image/*">
-                    <input type="hidden" name="pdp_cropped" id="pdp_cropped">
-                    
-                    <div id="pdp-cropper-container" style="display:none; max-height: 400px;">
-                        <img id="pdp-image-to-crop" style="max-width: 100%; display: block;">
-                    </div>
-                </div>
 
-                <div class="mb-4">
-                    <label class="form-label text-secondary small fw-medium d-block">Image de bannière</label>
-                    
-                    <?php if(!empty($profil['BANNIERE_CHEMIN'])): ?>
-                        <div class="mb-3">
-                            <img src="<?= htmlspecialchars($profil['BANNIERE_CHEMIN']) ?>" alt="Actuelle" class="rounded-3 shadow-sm w-100" style="aspect-ratio: 21/9; object-fit: cover;">
-                            <span class="text-muted small d-block mt-1">Bannière actuelle</span>
+                        <div class="mb-4">
+                            <label class="form-label text-secondary small fw-bold text-uppercase">Description</label>
+                            <textarea class="form-control bg-light border-0 p-3 rounded-4" name="description" rows="4" placeholder="Parlez un peu de votre passion..."><?= htmlspecialchars($profil['DESCRIPTION'] ?? '') ?></textarea>
                         </div>
-                    <?php endif; ?>
 
-                    <input type="file" class="form-control bg-light border-0 mb-2" id="banniere-input" accept="image/*">
-                    <input type="hidden" name="banniere_cropped" id="banniere_cropped">
-                    
-                    <!-- Conteneur Cropper Bannière -->
-                    <div id="banniere-cropper-container" style="display:none; max-height: 400px;">
-                        <img id="banniere-image-to-crop" style="max-width: 100%; display: block;">
-                    </div>
+                        <hr class="my-5 text-muted opacity-25">
+                        
+                        <h5 class="fw-bold mb-4 text-dark d-flex align-items-center">
+                            <span class="material-symbols-rounded text-primary me-2">wallpaper</span> Personnalisation
+                        </h5>
+                        
+                        <!-- ZONE : Photo de Profil -->
+                        <div class="mb-5">
+                            <label class="form-label text-secondary small fw-bold text-uppercase">Nouvelle Photo de profil</label>
+                            <input type="file" class="form-control bg-light border-0 p-3 rounded-4 mb-3" id="pdp-input" accept="image/*">
+                            <input type="hidden" name="pdp_cropped" id="pdp_cropped">
+                            
+                            <!-- Conteneur Cropper PDP -->
+                            <div id="pdp-cropper-container" class="rounded-4 overflow-hidden shadow-sm border border-light-subtle" style="display:none; max-height: 400px;">
+                                <img id="pdp-image-to-crop" style="max-width: 100%; display: block;">
+                            </div>
+                        </div>
+
+                        <!-- ZONE : Image de Bannière -->
+                        <div class="mb-4">
+                            <label class="form-label text-secondary small fw-bold text-uppercase">Nouvelle Bannière</label>
+                            <input type="file" class="form-control bg-light border-0 p-3 rounded-4 mb-3" id="banniere-input" accept="image/*">
+                            <input type="hidden" name="banniere_cropped" id="banniere_cropped">
+                            
+                            <!-- Conteneur Cropper Bannière -->
+                            <div id="banniere-cropper-container" class="rounded-4 overflow-hidden shadow-sm border border-light-subtle" style="display:none; max-height: 400px;">
+                                <img id="banniere-image-to-crop" style="max-width: 100%; display: block;">
+                            </div>
+                        </div>
+
+                        <div class="d-grid mt-5">
+                            <button type="submit" class="btn btn-primary btn-lg rounded-pill fw-semibold shadow-sm p-3 hover-card">
+                                Enregistrer les modifications
+                            </button>
+                        </div>
+                    </form>
                 </div>
-
-                <div class="d-grid mt-5">
-                    <button type="submit" class="btn btn-primary btn-lg rounded-pill fw-semibold shadow-sm custom-btn-submit">
-                        Enregistrer les modifications
-                    </button>
-                </div>
-            </form>
-
+                
+            </div>
         </div>
     </main>
 
@@ -199,9 +218,9 @@ try {
                     
                     if (cropperBan) cropperBan.destroy();
                     
-                    // Ratio 2.22:1 pour correspondre exactement à ta bannière CSS (ex: 400px de large pour 180px de haut)
+                    // Ratio 21:9 parfaitement calibré avec le profil.css
                     cropperBan = new Cropper(imgToCrop, {
-                        aspectRatio: 21 / 9, // Le nouveau ratio parfait
+                        aspectRatio: 21 / 9,
                         viewMode: 1,
                         autoCropArea: 1
                     });
@@ -214,6 +233,7 @@ try {
         document.getElementById('form-profil').addEventListener('submit', function(e) {
             // Si l'utilisateur a recadré une bannière
             if (cropperBan) {
+                // Tailles de coupe proportionnelles à 21/9
                 const canvasBan = cropperBan.getCroppedCanvas({ width: 1050, height: 450 });
                 document.getElementById('banniere_cropped').value = canvasBan.toDataURL('image/jpeg', 0.8);
             }

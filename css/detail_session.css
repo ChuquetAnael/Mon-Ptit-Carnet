@@ -1,0 +1,25 @@
+.stat-card {
+    background-color: #f8f9fa;
+    border-radius: 1rem;
+    padding: 1.2rem;
+    text-align: center;
+    height: 100%;
+    border: 1px solid #e9ecef;
+    transition: transform 0.2s;
+}
+.stat-card:hover {
+    transform: translateY(-3px);
+    box-shadow: 0 5px 15px rgba(0,0,0,0.05);
+}
+.stat-icon {
+    font-size: 32px;
+    color: #1e3c72;
+    margin-bottom: 10px;
+}
+.catch-img {
+    width: 100%;
+    height: 200px;
+    object-fit: cover;
+    border-top-left-radius: 1rem;
+    border-top-right-radius: 1rem;
+}

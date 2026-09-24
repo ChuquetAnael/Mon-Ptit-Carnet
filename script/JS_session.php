@@ -1,4 +1,4 @@
-<!-- SCRIPT ÉTAPE 1 : AJOUT ASYNCHRONE DE PHOTOS (RÉPARÉ) -->
+<!-- SCRIPT ÉTAPE 1 : AJOUT ASYNCHRONE DE PHOTOS -->
 <?php if ($etape === 1): ?>
 <script>
     const proxyInput = document.getElementById('photos-proxy');
@@ -24,8 +24,8 @@
             };
             reader.readAsDataURL(file);
         });
-        realInput.files = dataTransfer.files; // On remplit le VRAI champ caché
-        proxyInput.value = ''; // On vide le faux champ pour pouvoir recliquer
+        realInput.files = dataTransfer.files; // On met à jour le vrai input invisible
+        proxyInput.value = ''; // On vide le faux input pour pouvoir recliquer
         updateBtnText();
     });
 
@@ -49,7 +49,7 @@
 </script>
 <?php endif; ?>
 
-<!-- SCRIPT ÉTAPE 2 : LEAFLET ET SPOTS -->
+<!-- SCRIPT ÉTAPE 2 : LEAFLET ET MÉTÉO -->
 <?php if ($etape === 2): ?>
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
 <script>
@@ -74,6 +74,30 @@
         }
     }
 
+    function getWeatherCodeStr(code) {
+        if(code === 0) return 'Soleil dégagé';
+        if(code > 0 && code <= 3) return 'Nuageux';
+        if(code === 45 || code === 48) return 'Brouillard';
+        if(code >= 51 && code <= 67) return 'Pluie';
+        if(code >= 71 && code <= 77) return 'Neige';
+        if(code >= 80 && code <= 82) return 'Averses';
+        if(code >= 95) return 'Orage';
+        return 'Inconnu';
+    }
+
+    function getWindDirectionStr(degree) {
+        if (degree === null || degree === undefined) return '';
+        if (degree > 337.5 || degree <= 22.5) return 'N';
+        if (degree > 22.5 && degree <= 67.5) return 'NE';
+        if (degree > 67.5 && degree <= 112.5) return 'E';
+        if (degree > 112.5 && degree <= 157.5) return 'SE';
+        if (degree > 157.5 && degree <= 202.5) return 'S';
+        if (degree > 202.5 && degree <= 247.5) return 'SO';
+        if (degree > 247.5 && degree <= 292.5) return 'O';
+        if (degree > 292.5 && degree <= 337.5) return 'NO';
+        return '';
+    }
+
     document.addEventListener("DOMContentLoaded", function() {
         let latInput = document.getElementById('input_lat');
         let lngInput = document.getElementById('input_lng');
@@ -89,17 +113,27 @@
 
         function fetchWeather(lat, lng) {
             latInput.value = lat.toFixed(6); lngInput.value = lng.toFixed(6);
-            fetch(`https://api.open-meteo.com/v1/forecast?latitude=${lat}&longitude=${lng}&current=temperature_2m,surface_pressure,wind_speed_10m`)
+            fetch(`https://api.open-meteo.com/v1/forecast?latitude=${lat}&longitude=${lng}&current=temperature_2m,surface_pressure,wind_speed_10m,wind_direction_10m,weathercode`)
             .then(response => response.json())
             .then(data => {
                 if(data.current) {
                     document.getElementById('weather-card').style.display = 'block';
+                    
+                    let skyText = getWeatherCodeStr(data.current.weathercode);
+                    let windDirText = getWindDirectionStr(data.current.wind_direction_10m);
+
+                    document.getElementById('ui_ciel').innerText = skyText;
+                    document.getElementById('input_ciel').value = skyText;
+
                     document.getElementById('ui_temp').innerText = data.current.temperature_2m;
                     document.getElementById('ui_press').innerText = data.current.surface_pressure;
                     document.getElementById('ui_wind').innerText = data.current.wind_speed_10m;
+                    document.getElementById('ui_direc').innerText = windDirText ? `(${windDirText})` : '';
+                    
                     document.getElementById('input_temp').value = data.current.temperature_2m;
                     document.getElementById('input_press').value = data.current.surface_pressure;
                     document.getElementById('input_wind').value = data.current.wind_speed_10m;
+                    document.getElementById('input_direc').value = windDirText;
                 }
             }).catch(error => console.log(error));
         }
@@ -122,7 +156,7 @@
 </script>
 <?php endif; ?>
 
-<!-- SCRIPT ÉTAPE 3 : PWA AVANCÉE -->
+<!-- SCRIPT ÉTAPE 3 : GÉNÉRATION DES PRISES -->
 <?php if ($etape === 3): ?>
 <script>
     const especes = <?php echo json_encode($especes, JSON_HEX_TAG | JSON_HEX_APOS | JSON_HEX_QUOT | JSON_HEX_AMP); ?>;
@@ -136,9 +170,14 @@
     let currentCatchIndex = null;
     let tackleModalInstance = null;
 
-    function addCatchCard(photoPath) {
+    function addCatchCard(photoObj) {
         const i = catchIndex++;
-        let photoHtml = photoPath !== 'no_photo' 
+        
+        let isNoPhoto = (photoObj === 'no_photo');
+        let photoPath = isNoPhoto ? 'no_photo' : photoObj.chemin;
+        let captureTime = isNoPhoto ? '<?= date("H:i") ?>' : photoObj.heure;
+
+        let photoHtml = !isNoPhoto 
             ? `<div class="position-relative mb-4"><img src="${photoPath}" class="rounded-4 shadow-sm w-100" style="height: 140px; object-fit: cover;"><input type="hidden" name="prises[${i}][photo]" value="${photoPath}"></div>`
             : `<div class="bg-light rounded-4 shadow-sm mb-4 d-flex align-items-center justify-content-center text-muted" style="height: 100px; width: 100%; border: 2px dashed #dee2e6;"><span class="material-symbols-rounded" style="font-size:40px;">no_photography</span></div>`;
 
@@ -172,26 +211,44 @@
             </div>
 
             <div class="row g-3 mb-4">
-                <div class="col-6"><label class="form-label text-secondary small fw-bold text-uppercase">Taille (cm)</label><input type="number" step="0.5" class="form-control bg-light border-0 p-3 rounded-4" name="prises[${i}][taille]" placeholder="0.0"></div>
-                <div class="col-6"><label class="form-label text-secondary small fw-bold text-uppercase">Poids (kg)</label><input type="number" step="0.01" class="form-control bg-light border-0 p-3 rounded-4" name="prises[${i}][poids]" placeholder="0.00"></div>
+                <div class="col-4">
+                    <label class="form-label text-secondary small fw-bold text-uppercase">Quantité</label>
+                    <input type="number" min="1" value="1" class="form-control bg-light border-0 p-3 rounded-4" name="prises[${i}][quantite]">
+                </div>
+                <div class="col-4">
+                    <label class="form-label text-secondary small fw-bold text-uppercase">Taille (cm)</label>
+                    <input type="number" step="0.5" class="form-control bg-light border-0 p-3 rounded-4" name="prises[${i}][taille]">
+                </div>
+                <div class="col-4">
+                    <label class="form-label text-secondary small fw-bold text-uppercase">Poids (kg)</label>
+                    <input type="number" step="0.01" class="form-control bg-light border-0 p-3 rounded-4" name="prises[${i}][poids]">
+                </div>
             </div>
 
-            <div class="mb-4">
-                <label class="form-label text-secondary small fw-bold text-uppercase d-block">Appât / Leurre utilisé</label>
-                <button type="button" class="btn bg-light w-100 rounded-4 d-flex align-items-center justify-content-between p-3 border-0" onclick="openTackleBox(${i})">
-                    <span id="tackle-text-${i}" class="text-truncate text-muted" style="max-width:85%;">Choisir dans la boîte...</span>
-                    <span class="material-symbols-rounded text-primary">phishing</span>
-                </button>
-                <input type="hidden" name="prises[${i}][id_leurre]" id="hidden-leurre-${i}">
-                <input type="hidden" name="prises[${i}][id_appat]" id="hidden-appat-${i}">
+            <div class="row g-3 mb-4">
+                <div class="col-12">
+                    <label class="form-label text-secondary small fw-bold text-uppercase d-block">Appât / Leurre utilisé</label>
+                    <button type="button" class="btn bg-light w-100 rounded-4 d-flex align-items-center justify-content-between p-3 border-0" onclick="openTackleBox(${i})">
+                        <span id="tackle-text-${i}" class="text-truncate text-muted" style="max-width:85%;">Choisir dans la boîte...</span>
+                        <span class="material-symbols-rounded text-primary">phishing</span>
+                    </button>
+                    <input type="hidden" name="prises[${i}][id_leurre]" id="hidden-leurre-${i}">
+                    <input type="hidden" name="prises[${i}][id_appat]" id="hidden-appat-${i}">
+                </div>
             </div>
 
-            <div class="mb-3">
-                <label class="form-label text-secondary small fw-bold text-uppercase">Technique / Animation</label>
-                <select class="form-select bg-light border-0 p-3 rounded-4" name="prises[${i}][id_technique]">
-                    <option value="" selected>Non précisée</option>
-                    ${techOptions}
-                </select>
+            <div class="row g-3 mb-3">
+                <div class="col-6">
+                    <label class="form-label text-secondary small fw-bold text-uppercase">Heure capture</label>
+                    <input type="time" class="form-control bg-light border-0 p-3 rounded-4" name="prises[${i}][heure]" value="${captureTime}" required>
+                </div>
+                <div class="col-6">
+                    <label class="form-label text-secondary small fw-bold text-uppercase">Technique</label>
+                    <select class="form-select bg-light border-0 p-3 rounded-4" name="prises[${i}][id_technique]">
+                        <option value="" selected>Non précisée</option>
+                        ${techOptions}
+                    </select>
+                </div>
             </div>
 
             <div class="form-check form-switch mt-4 bg-light p-3 rounded-4 d-flex align-items-center">
@@ -211,6 +268,7 @@
         addCatchCard('no_photo'); 
     }
 
+    // Le Forçage CSS pour vaincre d-flex !important
     function attachDropdownEvents() {
         document.querySelectorAll('.custom-select-espece:not(.initialized)').forEach(dropdown => {
             dropdown.classList.add('initialized');
@@ -227,11 +285,9 @@
                 options.forEach(opt => {
                     const text = opt.innerText.toLowerCase();
                     if (text.includes(term)) {
-                        opt.classList.remove('d-none');
-                        opt.classList.add('d-flex');
+                        opt.style.setProperty('display', 'flex', 'important');
                     } else {
-                        opt.classList.remove('d-flex');
-                        opt.classList.add('d-none');
+                        opt.style.setProperty('display', 'none', 'important');
                     }
                 });
             });
@@ -362,11 +418,11 @@
         renderTackleBox();
     }
 
-    // VALIDATION VISUELLE AVANT ENVOI FINAL
-    document.getElementById('submit-final').addEventListener('click', function(e) {
+    document.getElementById('form-etape-3').addEventListener('submit', function(e) {
         let cards = document.querySelectorAll('.catch-card');
         if (cards.length === 0) {
-            alert("Vous devez avoir au moins une prise pour valider la session.");
+            e.preventDefault();
+            alert("Vous devez avoir au moins une prise pour enregistrer une session.");
             return;
         }
         
@@ -383,9 +439,8 @@
         });
         
         if(!allValid) {
+            e.preventDefault();
             alert("Erreur : Veuillez sélectionner l'espèce pour chaque prise (encadré en rouge).");
-        } else {
-            document.getElementById('form-etape-3').submit();
         }
     });
 </script>

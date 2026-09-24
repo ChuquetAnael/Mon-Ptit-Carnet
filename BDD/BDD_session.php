@@ -4,7 +4,7 @@ function gps2Num($coordPart) {
     $parts = explode('/', $coordPart);
     if (count($parts) <= 0) return 0;
     if (count($parts) == 1) return floatval($parts[0]);
-    if (floatval($parts[1]) == 0) return 0; // Sécurité anti-crash (Division by Zero)
+    if (floatval($parts[1]) == 0) return 0; // Sécurité anti-crash
     return floatval($parts[0]) / floatval($parts[1]);
 }
 
@@ -22,7 +22,6 @@ function compresserImage($source, $destination, $qualite = 80, $maxWidth = 1200)
     $info = getimagesize($source);
     if (!$info) return false;
 
-    // Création de l'image source selon le format
     switch ($info['mime']) {
         case 'image/jpeg': $image = @imagecreatefromjpeg($source); break;
         case 'image/png':  $image = @imagecreatefrompng($source); break;
@@ -31,7 +30,7 @@ function compresserImage($source, $destination, $qualite = 80, $maxWidth = 1200)
     }
     if (!$image) return false;
 
-    // 1. CORRECTION DE LA ROTATION EXIF (Pour les smartphones)
+    // CORRECTION DE LA ROTATION EXIF
     $exif = @exif_read_data($source);
     if (!empty($exif['Orientation'])) {
         switch ($exif['Orientation']) {
@@ -41,11 +40,9 @@ function compresserImage($source, $destination, $qualite = 80, $maxWidth = 1200)
         }
     }
 
-    // 2. Récupération des dimensions APRÈS la rotation
     $width = imagesx($image);
     $height = imagesy($image);
 
-    // Calcul du nouveau ratio
     if ($width > $maxWidth) {
         $newWidth = $maxWidth;
         $newHeight = ($height / $width) * $newWidth;
@@ -54,14 +51,10 @@ function compresserImage($source, $destination, $qualite = 80, $maxWidth = 1200)
         $newHeight = $height;
     }
 
-    // 3. Redimensionnement
     $newImage = imagecreatetruecolor((int)$newWidth, (int)$newHeight);
     imagecopyresampled($newImage, $image, 0, 0, 0, 0, (int)$newWidth, (int)$newHeight, $width, $height);
-
-    // 4. Sauvegarde
     $result = imagejpeg($newImage, $destination, $qualite);
 
-    // Libération de la mémoire
     imagedestroy($image);
     imagedestroy($newImage);
 
