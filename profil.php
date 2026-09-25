@@ -19,14 +19,15 @@ try {
     $stmt->execute(['id' => $id_user]);
     $profil = $stmt->fetch(PDO::FETCH_ASSOC);
 
-    // 2. Récupération des sessions avec la PREMIÈRE PHOTO renseignée
+    // 2. Récupération des sessions (Avec l'image générique et la somme des quantités)
     $stmt_sessions = $pdo->prepare("
         SELECT 
             s.ID_SESSION, 
             s.DATE_DEBUT, 
             ts.NOM_TYPE_SESSION, 
+            ts.TYPE_SES_ICONE_CHEMIN,
             sp.NOM_SPOT,
-            COUNT(p.ID_PRISE) AS nb_prises,
+            COALESCE(SUM(p.QUANTITE), 0) AS nb_prises,
             (SELECT p2.PHOTO_CHEMIN FROM PRISE p2 WHERE p2.ID_SESSION = s.ID_SESSION AND p2.PHOTO_CHEMIN IS NOT NULL LIMIT 1) AS premiere_photo
         FROM SESSION_P s
         LEFT JOIN TYPE_SESSION ts ON s.ID_TYPE_SESSION = ts.ID_TYPE_SESSION
@@ -100,7 +101,7 @@ try {
 
     <main class="container pb-5 mb-5 main-profile-content">
         
-        <!-- GRILLE CENTRALE (S'adapte aux grands écrans) -->
+        <!-- GRILLE CENTRALE -->
         <div class="row justify-content-center">
             <div class="col-12 col-md-10 col-lg-8">
                 
@@ -114,7 +115,7 @@ try {
                         </p>
                     <?php endif; ?>
 
-                    <!-- BOUTON MODIFIER (Unique et stylisé) -->
+                    <!-- BOUTON MODIFIER -->
                     <a href="modifier_profil.php" class="btn btn-outline-primary rounded-pill px-4 py-2 mt-3 fw-bold border-2 shadow-sm">
                         Modifier mon profil
                     </a>
@@ -122,7 +123,7 @@ try {
 
                 <hr class="my-5 text-muted opacity-25">
 
-                <!-- ONGLETS (Dernière sortie / Mes PB) -->
+                <!-- ONGLETS -->
                 <ul class="nav nav-pills mb-4 nav-fill custom-tabs gap-2" id="profil-tabs" role="tablist">
                     <li class="nav-item" role="presentation">
                         <button class="nav-link active rounded-pill fw-bold py-2" id="sessions-tab" data-bs-toggle="pill" data-bs-target="#tab-sessions" type="button" role="tab">Dernière sortie</button>
@@ -142,18 +143,18 @@ try {
                                 <p class="text-muted mb-0">Vous n'avez pas encore enregistré de session.</p>
                             </div>
                         <?php else: ?>
-                            <!-- Utilisation de la grille Bootstrap (2 colonnes sur tablette/PC, 1 sur mobile) -->
                             <div class="row g-4 mt-2">
                                 <?php foreach($dernieres_sessions as $sess): ?>
                                     <div class="col-12 col-md-6">
-                                        <!-- CARTE ENTIÈREMENT CLIQUABLE -->
                                         <a href="detail_session.php?id=<?= $sess['ID_SESSION'] ?>" class="text-decoration-none text-dark d-block h-100 hover-card">
                                             <div class="card border-0 shadow-sm rounded-4 bg-white overflow-hidden h-100 d-flex flex-column">
                                                 
-                                                <!-- IMAGE DE LA SESSION (Première image) -->
+                                                <!-- IMAGE DE LA SESSION (Vraie photo ou Illustration générique) -->
                                                 <div class="position-relative">
                                                     <?php if(!empty($sess['premiere_photo'])): ?>
                                                         <img src="<?= htmlspecialchars($sess['premiere_photo']) ?>" class="card-img-top w-100" style="height: 220px; object-fit: cover;" alt="Photo session">
+                                                    <?php elseif(!empty($sess['TYPE_SES_ICONE_CHEMIN'])): ?>
+                                                        <img src="<?= htmlspecialchars($sess['TYPE_SES_ICONE_CHEMIN']) ?>" class="card-img-top w-100" style="height: 220px; object-fit: cover;" alt="Illustration session">
                                                     <?php else: ?>
                                                         <div class="bg-light d-flex align-items-center justify-content-center w-100" style="height: 220px;">
                                                             <span class="material-symbols-rounded text-muted" style="font-size: 60px;">no_photography</span>
@@ -202,7 +203,6 @@ try {
                         <?php else: ?>
                             <div class="row g-3 mt-2">
                                 <?php foreach($records_personnels as $rec): ?>
-                                    <!-- Affichage en grille adaptative -->
                                     <div class="col-12 col-md-6 col-lg-4">
                                         <div class="card border-0 shadow-sm rounded-4 p-3 d-flex flex-row align-items-center bg-white hover-card">
                                             
@@ -215,7 +215,6 @@ try {
                                                 <?php endif; ?>
                                             </div>
                                             
-                                            <!-- Format maquette : Nom: XX cm -->
                                             <div class="flex-grow-1">
                                                 <h6 class="fw-bold mb-1 text-dark fs-5">
                                                     <?= htmlspecialchars($rec['NOM_COM']) ?> <span class="text-primary">: <?= $rec['record_taille'] ?> cm</span>
@@ -230,12 +229,11 @@ try {
                         <?php endif; ?>
                     </div>
 
-                </div> <!-- Fin Tab Content -->
+                </div>
             </div>
         </div>
     </main>
 
-    <!-- NAVIGATION FIXE (Inchangée) -->
     <nav class="navbar fixed-bottom bg-white custom-navbar border-0 shadow-lg">
         <div class="container-fluid d-flex justify-content-around align-items-end px-2">
             <a href="accueil.php" class="nav-item d-flex flex-column align-items-center">

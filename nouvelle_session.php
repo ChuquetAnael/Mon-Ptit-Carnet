@@ -77,7 +77,7 @@ if ($etape === 1 and $_SERVER["REQUEST_METHOD"] == "POST") {
     exit();
 }
 
-// POST ÉTAPE 2 : Sauvegarde en mémoire uniquement (AUCUNE REQUÊTE SQL ICI)
+// POST ÉTAPE 2 : Sauvegarde en mémoire uniquement (AUCUNE REQUÊTE SQL ICI, SAUF SI CAPOT)
 if ($etape === 2 and $_SERVER["REQUEST_METHOD"] == "POST") {
     $_SESSION['nouvelle_session']['step2'] = [
         'date_debut' => $_POST['date_debut'],
@@ -90,7 +90,7 @@ if ($etape === 2 and $_SERVER["REQUEST_METHOD"] == "POST") {
         'lat_final' => !empty($_POST['latitude']) ? $_POST['latitude'] : null,
         'lng_final' => !empty($_POST['longitude']) ? $_POST['longitude'] : null,
         
-        // Météo & Marée
+        // Météo & Marée (Qui iront désormais dans SESSION_P)
         'temp' => $_POST['meteo_temp'] ?? null,
         'press' => $_POST['meteo_press'] ?? null,
         'wind' => $_POST['meteo_wind'] ?? null,
@@ -100,7 +100,7 @@ if ($etape === 2 and $_SERVER["REQUEST_METHOD"] == "POST") {
         'desc_maree' => (!empty($_POST['desc_maree']) && $_POST['desc_maree'] !== 'N/A') ? $_POST['desc_maree'] : null
     ];
 
-    // SI CAPOT : On insère la session en base de données et on skip l'étape 3
+    // SI CAPOT : On insère la session en base de données avec la météo et on skip l'étape 3
     if (isset($_POST['is_capot'])) {
         $s2 = $_SESSION['nouvelle_session']['step2'];
         $id_user = $_SESSION['user_id'];
@@ -117,8 +117,18 @@ if ($etape === 2 and $_SERVER["REQUEST_METHOD"] == "POST") {
                 $id_spot = $s2['id_spot'];
             }
 
-            $stmtSess = $pdo->prepare("INSERT INTO SESSION_P (ID_UTILISATEUR, ID_TYPE_SESSION, ID_SPOT, DATE_DEBUT, DATE_FIN) VALUES (?, ?, ?, ?, ?)");
-            $stmtSess->execute([$id_user, $s2['id_type_session'], $id_spot, $s2['date_debut'], $s2['date_fin']]);
+            // Insertion dans SESSION_P AVEC les données météo et marée
+            $stmtSess = $pdo->prepare("
+                INSERT INTO SESSION_P (
+                    ID_UTILISATEUR, ID_TYPE_SESSION, ID_SPOT, DATE_DEBUT, DATE_FIN, 
+                    TEMPERATURE, PRESSION_HPA, VITESSE_VENT, DIREC_VENT, DESCRIP_CIEL, COEFF_MAREE, DESC_MAREE
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            ");
+            $stmtSess->execute([
+                $id_user, $s2['id_type_session'], $id_spot, $s2['date_debut'], $s2['date_fin'],
+                $s2['temp'], $s2['press'], $s2['wind'], $s2['direc_vent'], $s2['ciel'], 
+                $s2['coeff_maree'], $s2['desc_maree']
+            ]);
 
             $pdo->commit();
             header('Location: nouvelle_session.php?etape=4');
@@ -152,9 +162,18 @@ if ($etape === 3 and $_SERVER["REQUEST_METHOD"] == "POST") {
             $id_spot = $s2['id_spot'];
         }
 
-        // 2. Enregistrement de la Session
-        $stmtSess = $pdo->prepare("INSERT INTO SESSION_P (ID_UTILISATEUR, ID_TYPE_SESSION, ID_SPOT, DATE_DEBUT, DATE_FIN) VALUES (?, ?, ?, ?, ?)");
-        $stmtSess->execute([$id_user, $s2['id_type_session'], $id_spot, $s2['date_debut'], $s2['date_fin']]);
+        // 2. Enregistrement de la Session (Avec Météo et Marée)
+        $stmtSess = $pdo->prepare("
+            INSERT INTO SESSION_P (
+                ID_UTILISATEUR, ID_TYPE_SESSION, ID_SPOT, DATE_DEBUT, DATE_FIN,
+                TEMPERATURE, PRESSION_HPA, VITESSE_VENT, DIREC_VENT, DESCRIP_CIEL, COEFF_MAREE, DESC_MAREE
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        ");
+        $stmtSess->execute([
+            $id_user, $s2['id_type_session'], $id_spot, $s2['date_debut'], $s2['date_fin'],
+            $s2['temp'], $s2['press'], $s2['wind'], $s2['direc_vent'], $s2['ciel'], 
+            $s2['coeff_maree'], $s2['desc_maree']
+        ]);
         $id_session = $pdo->lastInsertId();
 
         // 3. Enregistrement des nouveaux leurres et appâts
@@ -175,15 +194,14 @@ if ($etape === 3 and $_SERVER["REQUEST_METHOD"] == "POST") {
             }
         }
 
-        // 4. Enregistrement des Prises (Toutes tes colonnes météo, marée, etc.)
+        // 4. Enregistrement des Prises (Sans les colonnes météo globales)
         if (!empty($_POST['prises'])) {
             $stmtPrise = $pdo->prepare("
                 INSERT INTO PRISE (
                     ID_SESSION, ID_ESPECE, ID_LEURRE, ID_APPAT, ID_TECHNIQUE, 
                     TAILLE_CM, POIDS_KG, RELACHE, PHOTO_CHEMIN, 
-                    LATITUDE, LONGITUDE, TEMPERATURE, PRESSION_HPA, VITESSE_VENT, 
-                    DIREC_VENT, DESCRIP_CIEL, COEFF_MAREE, DESC_MAREE, QUANTITE, DATE_HEURE
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    LATITUDE, LONGITUDE, QUANTITE, DATE_HEURE
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             ");
 
             foreach ($_POST['prises'] as $p) {
@@ -195,7 +213,6 @@ if ($etape === 3 and $_SERVER["REQUEST_METHOD"] == "POST") {
                 $id_appat_final = !empty($p['id_appat']) ? $p['id_appat'] : null;
                 if (strpos((string)$id_appat_final, 'new_a_') === 0) $id_appat_final = $map_new_appats[$id_appat_final];
 
-                // Assemblage de la date de session avec l'heure de capture spécifique à cette prise
                 $heure_prise = !empty($p['heure']) ? $p['heure'] : '00:00';
                 $date_heure_finale = $date_base . ' ' . $heure_prise . ':00';
                 $quantite = (!empty($p['quantite']) && is_numeric($p['quantite']) && $p['quantite'] > 0) ? (int)$p['quantite'] : 1;
@@ -211,9 +228,6 @@ if ($etape === 3 and $_SERVER["REQUEST_METHOD"] == "POST") {
                     isset($p['relache']) ? 1 : 0, 
                     !empty($p['photo']) && $p['photo'] !== 'no_photo' ? $p['photo'] : null,
                     $s2['lat_final'], $s2['lng_final'], 
-                    $s2['temp'], $s2['press'], $s2['wind'], 
-                    $s2['direc_vent'], $s2['ciel'], 
-                    $s2['coeff_maree'], $s2['desc_maree'], 
                     $quantite,
                     $date_heure_finale
                 ]);
@@ -297,13 +311,11 @@ if ($etape === 3) {
             <p class="text-muted small mb-4">Uploadez vos photos. L'heure de capture individuelle sera extraite.</p>
             <form action="nouvelle_session.php?etape=1" method="POST" enctype="multipart/form-data" id="form-photos">
                 <div class="mb-4">
-                    <!-- LE PROXY EST DE RETOUR ICI -->
                     <label for="photos-proxy" class="btn btn-light p-4 rounded-4 w-100 border-2 border-primary border-dashed d-flex flex-column align-items-center" style="border-style: dashed;">
                         <span class="material-symbols-rounded text-primary mb-2" style="font-size: 40px;">add_a_photo</span>
                         <span class="fw-semibold text-primary">Ajouter des photos</span>
                         <input type="file" id="photos-proxy" multiple accept="image/*" class="d-none">
                     </label>
-                    <!-- Vrai input caché -->
                     <input type="file" id="photos-real" name="photos[]" multiple class="d-none">
                     <div id="preview-container" class="d-flex flex-wrap gap-2 mt-3 justify-content-center"></div>
                 </div>
@@ -505,11 +517,7 @@ if ($etape === 3) {
 
     </main>
 
-    <!-- !! IMPORTANT : BOOTSTRAP TOUJOURS AVANT TON JAVASCRIPT !! -->
     <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/js/bootstrap.bundle.min.js"></script>
-
-    <!-- INCLUSION DU SCRIPT JAVASCRIPT -->
     <?php include 'script/JS_session.php'; ?>
-
 </body>
 </html>

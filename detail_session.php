@@ -8,7 +8,6 @@ if (!isset($_SESSION['user_id'])) {
 
 require_once './bdd/env.php';
 
-// Vérification de l'ID de session passé dans l'URL
 if (!isset($_GET['id']) || !is_numeric($_GET['id'])) {
     header('Location: profil.php');
     exit();
@@ -21,7 +20,68 @@ try {
     $pdo = new PDO("mysql:host=$host;dbname=$dbname;charset=utf8", $user, $pass);
     $pdo->setAttribute(PDO::ATTR_ERRMODE, PDO::ERRMODE_EXCEPTION);
 
-    // 1. Récupération des informations globales de la Session
+    // =========================================================================
+    // 1. GESTION DES SUPPRESSIONS (Session entière ou Prise individuelle)
+    // =========================================================================
+    
+    // A. Suppression de la Session complète
+    if (isset($_POST['delete_session'])) {
+        // Étape 1 : Récupérer toutes les photos liées à cette session
+        $stmtPhotos = $pdo->prepare("SELECT PHOTO_CHEMIN FROM PRISE WHERE ID_SESSION = ? AND PHOTO_CHEMIN IS NOT NULL");
+        $stmtPhotos->execute([$id_session]);
+        $photos = $stmtPhotos->fetchAll(PDO::FETCH_COLUMN);
+
+        // Étape 2 : Supprimer physiquement les fichiers du serveur
+        foreach ($photos as $photo) {
+            if (file_exists($photo)) {
+                unlink($photo);
+            }
+        }
+
+        // Étape 3 : Supprimer les prises en BDD
+        $stmtDelPrises = $pdo->prepare("DELETE FROM PRISE WHERE ID_SESSION = ?");
+        $stmtDelPrises->execute([$id_session]);
+
+        // Étape 4 : Supprimer la session (on revérifie l'ID_UTILISATEUR par sécurité)
+        $stmtDelSession = $pdo->prepare("DELETE FROM SESSION_P WHERE ID_SESSION = ? AND ID_UTILISATEUR = ?");
+        $stmtDelSession->execute([$id_session, $id_user]);
+
+        // Redirection vers le profil
+        header('Location: profil.php');
+        exit();
+    }
+
+    // B. Suppression d'une Prise individuelle
+    if (isset($_POST['delete_prise']) && isset($_POST['id_prise'])) {
+        $id_prise = (int)$_POST['id_prise'];
+        
+        // Vérifier que la prise appartient bien à une session de cet utilisateur
+        $stmtCheck = $pdo->prepare("
+            SELECT p.PHOTO_CHEMIN 
+            FROM PRISE p 
+            JOIN SESSION_P s ON p.ID_SESSION = s.ID_SESSION 
+            WHERE p.ID_PRISE = ? AND s.ID_UTILISATEUR = ?
+        ");
+        $stmtCheck->execute([$id_prise, $id_user]);
+        $photo_a_supprimer = $stmtCheck->fetchColumn();
+
+        if ($photo_a_supprimer !== false) {
+            // Supprimer la photo du disque
+            if (!empty($photo_a_supprimer) && file_exists($photo_a_supprimer)) {
+                unlink($photo_a_supprimer);
+            }
+            // Supprimer de la BDD
+            $stmtDel = $pdo->prepare("DELETE FROM PRISE WHERE ID_PRISE = ?");
+            $stmtDel->execute([$id_prise]);
+            
+            $message_succes = "Prise supprimée avec succès.";
+        }
+    }
+
+    // =========================================================================
+    // 2. RÉCUPÉRATION DES DONNÉES POUR L'AFFICHAGE
+    // =========================================================================
+
     $stmtSess = $pdo->prepare("
         SELECT s.*, sp.NOM_SPOT, sp.LOCALISATION, ts.NOM_TYPE_SESSION
         FROM SESSION_P s
@@ -32,13 +92,12 @@ try {
     $stmtSess->execute(['id_session' => $id_session, 'id_user' => $id_user]);
     $session = $stmtSess->fetch(PDO::FETCH_ASSOC);
 
-    // Sécurité : si la session n'existe pas ou n'appartient pas à l'utilisateur
     if (!$session) {
         header('Location: profil.php');
         exit();
     }
 
-    // 2. Récupération du détail de toutes les Prises de cette session
+    // Ajout de la colonne QUANTITE dans l'extraction
     $stmtPrises = $pdo->prepare("
         SELECT p.*, e.NOM_COM, e.ICONE_CHEMIN, l.NOM_LEURRE, a.NOM_APPAT, t.NOM_TECHNIQUE
         FROM PRISE p
@@ -52,9 +111,10 @@ try {
     $stmtPrises->execute(['id_session' => $id_session]);
     $prises = $stmtPrises->fetchAll(PDO::FETCH_ASSOC);
 
-    // 3. --- MOTEUR DE STATISTIQUES PHP ---
+    // =========================================================================
+    // 3. MOTEUR DE STATISTIQUES PHP
+    // =========================================================================
     
-    // A. Calcul du temps de pêche
     $temps_de_peche = "Non précisé";
     if (!empty($session['DATE_FIN'])) {
         $debut = new DateTime($session['DATE_DEBUT']);
@@ -66,45 +126,45 @@ try {
         }
     }
 
-    // B. Extraction des records et du matériel dominant
-    $nb_prises = count($prises);
+    // NOUVEAU CALCUL : On additionne les quantités au lieu de compter les lignes
+    $nb_prises = 0;
     $plus_gros_cm = 0;
     $meilleur_poisson = "Aucun";
     $stats_materiel = [];
     
-    $lat_map = 46.603354; // Centre de la France par défaut
+    $lat_map = 46.603354; 
     $lng_map = 1.888334;
     $zoom_map = 5;
 
     foreach ($prises as $p) {
-        // Recherche du plus gros poisson
+        // Ajout de la quantité de cette prise spécifique au total
+        $qte_actuelle = !empty($p['QUANTITE']) ? (int)$p['QUANTITE'] : 1;
+        $nb_prises += $qte_actuelle;
+
         if (!empty($p['TAILLE_CM']) && $p['TAILLE_CM'] > $plus_gros_cm) {
             $plus_gros_cm = $p['TAILLE_CM'];
             $meilleur_poisson = $p['NOM_COM'] . " (" . $plus_gros_cm . " cm)";
         }
-        
-        // Comptage des leurres / appâts
+
         $matos = !empty($p['NOM_LEURRE']) ? $p['NOM_LEURRE'] : (!empty($p['NOM_APPAT']) ? $p['NOM_APPAT'] : null);
         if ($matos) {
             if (!isset($stats_materiel[$matos])) $stats_materiel[$matos] = 0;
-            $stats_materiel[$matos]++;
+            // Si on a pêché 11 poissons avec ce leurre, ça compte pour 11 utilisations réussies
+            $stats_materiel[$matos] += $qte_actuelle;
         }
     }
 
-    // Détermination du meilleur leurre/appât
     $meilleur_materiel = "Non précisé";
     if (!empty($stats_materiel)) {
         arsort($stats_materiel);
         $meilleur_materiel = array_key_first($stats_materiel);
     }
 
-    // C. Récupération des données Météo (depuis la première prise enregistrée)
-    $meteo_temp = ($nb_prises > 0 && !empty($prises[0]['TEMPERATURE'])) ? $prises[0]['TEMPERATURE'] : '--';
-    $meteo_press = ($nb_prises > 0 && !empty($prises[0]['PRESSION_HPA'])) ? $prises[0]['PRESSION_HPA'] : '--';
-    $meteo_wind = ($nb_prises > 0 && !empty($prises[0]['VITESSE_VENT'])) ? $prises[0]['VITESSE_VENT'] : '--';
+    // Récupération météo depuis la Session et non plus depuis la prise
+    $meteo_temp = !empty($session['TEMPERATURE']) ? $session['TEMPERATURE'] : '--';
+    $meteo_press = !empty($session['PRESSION_HPA']) ? $session['PRESSION_HPA'] : '--';
+    $meteo_wind = !empty($session['VITESSE_VENT']) ? $session['VITESSE_VENT'] : '--';
 
-    // D. Récupération des coordonnées pour la carte
-    // Priorité 1 : La localisation globale du spot
     if (!empty($session['LOCALISATION'])) {
         $coords = explode(',', $session['LOCALISATION']);
         if (count($coords) == 2) {
@@ -112,9 +172,7 @@ try {
             $lng_map = floatval(trim($coords[1]));
             $zoom_map = 14;
         }
-    } 
-    // Priorité 2 : Les coordonnées EXIF de la première prise
-    elseif ($nb_prises > 0 && !empty($prises[0]['LATITUDE']) && !empty($prises[0]['LONGITUDE'])) {
+    } elseif (count($prises) > 0 && !empty($prises[0]['LATITUDE']) && !empty($prises[0]['LONGITUDE'])) {
         $lat_map = floatval($prises[0]['LATITUDE']);
         $lng_map = floatval($prises[0]['LONGITUDE']);
         $zoom_map = 14;
@@ -135,21 +193,33 @@ try {
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/css/bootstrap.min.css" rel="stylesheet">
     <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@400;500;600;700&display=swap" rel="stylesheet">
     <link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Rounded:opsz,wght,FILL,GRAD@24,400,1,0" rel="stylesheet">
-    
     <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
     
     <link href="css/style.css" rel="stylesheet">
     <link href="css/profil.css" rel="stylesheet">
     <link rel="stylesheet" href="detail_session.css">
-
 </head>
 <body class="bg-light">
 
     <!-- BANNIÈRE RESPONSIVE -->
-    <header class="profile-banner-responsive d-flex flex-column align-items-center justify-content-center" style="height: 180px;">
+    <header class="profile-banner-responsive d-flex flex-column align-items-center justify-content-center position-relative" style="height: 180px;">
+        
+        <!-- Bouton Retour -->
         <a href="profil.php" class="settings-btn" style="left: 20px; right: auto;" title="Retour au profil">
             <span class="material-symbols-rounded">arrow_back_ios_new</span>
         </a>
+        
+        <!-- Boutons d'édition et suppression de la session (Top Right) -->
+        <div class="position-absolute d-flex gap-2" style="right: 20px; top: 20px; z-index: 10;">
+            <a href="editer_session.php?id=<?= $id_session ?>" class="btn btn-sm btn-light rounded-circle text-primary p-2 shadow-sm d-flex align-items-center justify-content-center" title="Modifier la session">
+                <span class="material-symbols-rounded" style="font-size: 20px;">edit</span>
+            </a>
+            <form method="POST" class="m-0" onsubmit="return confirm('Es-tu sûr de vouloir supprimer cette session ? Toutes les prises et photos associées seront perdues.');">
+                <button type="submit" name="delete_session" class="btn btn-sm btn-danger rounded-circle p-2 shadow-sm d-flex align-items-center justify-content-center" title="Supprimer la session">
+                    <span class="material-symbols-rounded" style="font-size: 20px;">delete</span>
+                </button>
+            </form>
+        </div>
         
         <h1 class="h3 fw-bold text-white mb-2 text-shadow text-center px-4">
             <?= !empty($session['NOM_SPOT']) ? htmlspecialchars($session['NOM_SPOT']) : 'Spot non précisé' ?>
@@ -161,14 +231,21 @@ try {
     </header>
 
     <main class="container pb-5 mb-5" style="margin-top: -20px; position: relative; z-index: 2;">
+        
+        <?php if(isset($message_succes)): ?>
+            <div class="alert alert-success alert-dismissible fade show rounded-4 border-0 shadow-sm text-center mb-4" role="alert">
+                <?= htmlspecialchars($message_succes) ?>
+                <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
+            </div>
+        <?php endif; ?>
+
         <div class="row justify-content-center">
             <div class="col-12 col-lg-10">
 
                 <!-- TABLEAU DE BORD DES STATISTIQUES -->
                 <div class="card border-0 shadow-sm rounded-4 p-4 mb-4 bg-white">
                     <h5 class="fw-bold text-dark mb-4 d-flex align-items-center">
-                        <span class="material-symbols-rounded text-primary me-2">query_stats</span>
-                        Bilan de la session
+                        <span class="material-symbols-rounded text-primary me-2">query_stats</span> Bilan de la session
                     </h5>
                     
                     <div class="row g-3">
@@ -206,17 +283,13 @@ try {
                     </div>
                 </div>
 
-                <!-- CARTE LEAFLET ET MÉTÉO (CONDITIONS DE SESSION) -->
+                <!-- CARTE LEAFLET ET MÉTÉO -->
                 <div class="card border-0 shadow-sm rounded-4 p-4 mb-4 bg-white">
                     <h5 class="fw-bold text-dark mb-4 d-flex align-items-center">
-                        <span class="material-symbols-rounded text-primary me-2">location_on</span>
-                        Position & Conditions Météo
+                        <span class="material-symbols-rounded text-primary me-2">location_on</span> Position & Conditions Météo
                     </h5>
-                    
-                    <!-- Carte GPS -->
                     <div id="session-map" class="rounded-4 overflow-hidden shadow-sm border border-light-subtle mb-4" style="height: 250px; z-index: 1;"></div>
                     
-                    <!-- Cartes Météo détaillées -->
                     <div class="row g-3">
                         <div class="col-4">
                             <div class="bg-light rounded-4 p-3 text-center border h-100 hover-card">
@@ -243,10 +316,14 @@ try {
                 </div>
 
                 <!-- GALERIE DES PRISES -->
-                <h5 class="fw-bold text-dark mb-4 mt-5 d-flex align-items-center">
-                    <span class="material-symbols-rounded text-primary me-2">photo_library</span>
-                    Galerie des prises
-                </h5>
+                <div class="d-flex justify-content-between align-items-center mb-4 mt-5">
+                    <h5 class="fw-bold text-dark mb-0 d-flex align-items-center">
+                        <span class="material-symbols-rounded text-primary me-2">photo_library</span> Galerie des prises
+                    </h5>
+                    <a href="form_prise.php?action=add&id_session=<?= $id_session ?>" class="btn btn-sm btn-primary rounded-pill fw-semibold px-3 shadow-sm d-flex align-items-center">
+                        <span class="material-symbols-rounded fs-6 me-1">add</span> Ajouter
+                    </a>
+                </div>
 
                 <?php if (empty($prises)): ?>
                     <div class="card border-0 shadow-sm rounded-4 p-5 text-center bg-white">
@@ -257,8 +334,21 @@ try {
                     <div class="row g-4">
                         <?php foreach($prises as $p): ?>
                             <div class="col-12 col-md-6">
-                                <div class="card border-0 shadow-sm rounded-4 h-100 bg-white hover-card">
+                                <div class="card border-0 shadow-sm rounded-4 h-100 bg-white hover-card position-relative overflow-hidden">
                                     
+                                    <!-- Boutons de modification et suppression de la prise -->
+                                    <div class="position-absolute top-0 end-0 m-2 d-flex gap-2" style="z-index: 10;">
+                                        <a href="form_prise.php?action=edit&id=<?= $p['ID_PRISE'] ?>" class="btn btn-sm btn-light rounded-circle text-primary p-2 shadow-sm d-flex align-items-center justify-content-center" title="Modifier la prise">
+                                            <span class="material-symbols-rounded" style="font-size: 18px;">edit</span>
+                                        </a>
+                                        <form method="POST" class="m-0" onsubmit="return confirm('Es-tu sûr de vouloir supprimer cette prise et sa photo ?');">
+                                            <input type="hidden" name="id_prise" value="<?= $p['ID_PRISE'] ?>">
+                                            <button type="submit" name="delete_prise" class="btn btn-sm btn-light rounded-circle text-danger p-2 shadow-sm d-flex align-items-center justify-content-center" title="Supprimer la prise">
+                                                <span class="material-symbols-rounded" style="font-size: 18px;">delete</span>
+                                            </button>
+                                        </form>
+                                    </div>
+
                                     <?php if (!empty($p['PHOTO_CHEMIN'])): ?>
                                         <img src="<?= htmlspecialchars($p['PHOTO_CHEMIN']) ?>" alt="Prise" class="catch-img">
                                     <?php else: ?>
@@ -268,11 +358,20 @@ try {
                                     <?php endif; ?>
                                     
                                     <div class="card-body p-4">
-                                        <div class="d-flex justify-content-between align-items-start mb-2">
+                                        <div class="d-flex justify-content-between align-items-start mb-2 pe-5">
                                             <h5 class="fw-bold text-dark mb-0 d-flex align-items-center">
                                                 <?php if(!empty($p['ICONE_CHEMIN'])): ?>
                                                     <img src="<?= htmlspecialchars($p['ICONE_CHEMIN']) ?>" alt="Icone" style="width: 25px; height: 25px; object-fit: contain;" class="me-2">
                                                 <?php endif; ?>
+                                                
+                                                <!-- AFFICHAGE DE LA QUANTITÉ SI > 1 -->
+                                                <?php 
+                                                    $qte = !empty($p['QUANTITE']) ? (int)$p['QUANTITE'] : 1;
+                                                    if ($qte > 1): 
+                                                ?>
+                                                    <span class="badge bg-primary text-white rounded-pill px-2 py-1 me-2" style="font-size: 0.8rem;">x<?= $qte ?></span>
+                                                <?php endif; ?>
+
                                                 <?= htmlspecialchars($p['NOM_COM']) ?>
                                             </h5>
                                             <?php if ($p['RELACHE']): ?>
@@ -316,7 +415,6 @@ try {
         </div>
     </main>
 
-    <!-- NAVIGATION FIXE -->
     <nav class="navbar fixed-bottom bg-white custom-navbar border-0 shadow-lg">
         <div class="container-fluid d-flex justify-content-around align-items-end px-2">
             <a href="accueil.php" class="nav-item d-flex flex-column align-items-center">
@@ -333,7 +431,6 @@ try {
         </div>
     </nav>
 
-    <!-- SCRIPTS -->
     <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/js/bootstrap.bundle.min.js"></script>
     <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
     <script>

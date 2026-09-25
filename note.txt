@@ -1,5 +1,5 @@
 codex :
-    
+    asset a changé : sandre, truite F, Vairon, silure, rousette petite, orphie, breme x2 , brochet
 
 BDD :
     espece maquante : coquette,Merlan,cernier

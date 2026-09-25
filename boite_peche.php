@@ -15,16 +15,26 @@ try {
     // 1. GESTION DE LA SUPPRESSION
     // Suppression d'un leurre
     if (isset($_POST['delete_leurre']) && isset($_POST['id_leurre'])) {
+        // A. On délie le leurre de toutes les prises historiques (on met à NULL)
+        $stmtUpdate = $pdo->prepare("UPDATE PRISE SET ID_LEURRE = NULL WHERE ID_LEURRE = ?");
+        $stmtUpdate->execute([$_POST['id_leurre']]);
+        
+        // B. On supprime définitivement le leurre
         $stmt = $pdo->prepare("DELETE FROM LEURRE WHERE ID_LEURRE = ? AND ID_UTILISATEUR = ?");
         $stmt->execute([$_POST['id_leurre'], $_SESSION['user_id']]);
-        $message = "Leurre supprimé avec succès.";
+        $message = "Leurre supprimé avec succès. Les anciennes prises liées ont été conservées.";
     }
     
     // Suppression d'un appât
     if (isset($_POST['delete_appat']) && isset($_POST['id_appat'])) {
+        // A. On délie l'appât
+        $stmtUpdate = $pdo->prepare("UPDATE PRISE SET ID_APPAT = NULL WHERE ID_APPAT = ?");
+        $stmtUpdate->execute([$_POST['id_appat']]);
+        
+        // B. On supprime l'appât
         $stmt = $pdo->prepare("DELETE FROM APPAT WHERE ID_APPAT = ? AND ID_UTILISATEUR = ?");
         $stmt->execute([$_POST['id_appat'], $_SESSION['user_id']]);
-        $message = "Appât supprimé avec succès.";
+        $message = "Appât supprimé avec succès. Les anciennes prises liées ont été conservées.";
     }
 
     // 2. RÉCUPÉRATION DES DONNÉES (Uniquement le matériel privé de l'utilisateur)
