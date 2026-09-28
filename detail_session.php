@@ -126,7 +126,6 @@ try {
         }
     }
 
-    // NOUVEAU CALCUL : On additionne les quantités au lieu de compter les lignes
     $nb_prises = 0;
     $plus_gros_cm = 0;
     $meilleur_poisson = "Aucun";
@@ -137,7 +136,6 @@ try {
     $zoom_map = 5;
 
     foreach ($prises as $p) {
-        // Ajout de la quantité de cette prise spécifique au total
         $qte_actuelle = !empty($p['QUANTITE']) ? (int)$p['QUANTITE'] : 1;
         $nb_prises += $qte_actuelle;
 
@@ -149,7 +147,6 @@ try {
         $matos = !empty($p['NOM_LEURRE']) ? $p['NOM_LEURRE'] : (!empty($p['NOM_APPAT']) ? $p['NOM_APPAT'] : null);
         if ($matos) {
             if (!isset($stats_materiel[$matos])) $stats_materiel[$matos] = 0;
-            // Si on a pêché 11 poissons avec ce leurre, ça compte pour 11 utilisations réussies
             $stats_materiel[$matos] += $qte_actuelle;
         }
     }
@@ -160,7 +157,6 @@ try {
         $meilleur_materiel = array_key_first($stats_materiel);
     }
 
-    // Récupération météo depuis la Session et non plus depuis la prise
     $meteo_temp = !empty($session['TEMPERATURE']) ? $session['TEMPERATURE'] : '--';
     $meteo_press = !empty($session['PRESSION_HPA']) ? $session['PRESSION_HPA'] : '--';
     $meteo_wind = !empty($session['VITESSE_VENT']) ? $session['VITESSE_VENT'] : '--';
@@ -209,7 +205,7 @@ try {
             <span class="material-symbols-rounded">arrow_back_ios_new</span>
         </a>
         
-        <!-- Boutons d'édition et suppression de la session (Top Right) -->
+        <!-- Boutons d'édition et suppression de la session -->
         <div class="position-absolute d-flex gap-2" style="right: 20px; top: 20px; z-index: 10;">
             <a href="editer_session.php?id=<?= $id_session ?>" class="btn btn-sm btn-light rounded-circle text-primary p-2 shadow-sm d-flex align-items-center justify-content-center" title="Modifier la session">
                 <span class="material-symbols-rounded" style="font-size: 20px;">edit</span>
@@ -349,8 +345,13 @@ try {
                                         </form>
                                     </div>
 
+                                    <!-- GESTION DE L'IMAGE DE LA PRISE -->
                                     <?php if (!empty($p['PHOTO_CHEMIN'])): ?>
                                         <img src="<?= htmlspecialchars($p['PHOTO_CHEMIN']) ?>" alt="Prise" class="catch-img">
+                                    <?php elseif (!empty($p['ICONE_CHEMIN'])): ?>
+                                        <div class="bg-light d-flex align-items-center justify-content-center catch-img border-bottom p-4">
+                                            <img src="<?= htmlspecialchars($p['ICONE_CHEMIN']) ?>" alt="<?= htmlspecialchars($p['NOM_COM']) ?>" style="width: 100%; height: 100%; object-fit: contain;">
+                                        </div>
                                     <?php else: ?>
                                         <div class="bg-light d-flex align-items-center justify-content-center catch-img border-bottom">
                                             <span class="material-symbols-rounded text-muted" style="font-size: 60px;">no_photography</span>
@@ -364,7 +365,6 @@ try {
                                                     <img src="<?= htmlspecialchars($p['ICONE_CHEMIN']) ?>" alt="Icone" style="width: 25px; height: 25px; object-fit: contain;" class="me-2">
                                                 <?php endif; ?>
                                                 
-                                                <!-- AFFICHAGE DE LA QUANTITÉ SI > 1 -->
                                                 <?php 
                                                     $qte = !empty($p['QUANTITE']) ? (int)$p['QUANTITE'] : 1;
                                                     if ($qte > 1): 

@@ -19,7 +19,18 @@ try {
     $stmt->execute(['id' => $id_user]);
     $profil = $stmt->fetch(PDO::FETCH_ASSOC);
 
-    // 2. Récupération des sessions (Avec l'image générique et la somme des quantités)
+    // 2. Variables de pagination
+    $limit = 10;
+    $page = isset($_GET['page']) ? max(1, (int)$_GET['page']) : 1;
+    $offset = ($page - 1) * $limit;
+
+    // Calcul du nombre total de pages
+    $stmt_count = $pdo->prepare("SELECT COUNT(ID_SESSION) FROM SESSION_P WHERE ID_UTILISATEUR = :id");
+    $stmt_count->execute(['id' => $id_user]);
+    $total_sessions = $stmt_count->fetchColumn();
+    $total_pages = ceil($total_sessions / $limit);
+
+    // 3. Récupération des sessions avec Pagination (OFFSET et LIMIT)
     $stmt_sessions = $pdo->prepare("
         SELECT 
             s.ID_SESSION, 
@@ -36,12 +47,16 @@ try {
         WHERE s.ID_UTILISATEUR = :id
         GROUP BY s.ID_SESSION
         ORDER BY s.DATE_DEBUT DESC
-        LIMIT 10
+        LIMIT :limit OFFSET :offset
     ");
-    $stmt_sessions->execute(['id' => $id_user]);
+    // L'utilisation de bindValue est obligatoire pour injecter des entiers propres dans LIMIT et OFFSET
+    $stmt_sessions->bindValue(':id', $id_user, PDO::PARAM_INT);
+    $stmt_sessions->bindValue(':limit', $limit, PDO::PARAM_INT);
+    $stmt_sessions->bindValue(':offset', $offset, PDO::PARAM_INT);
+    $stmt_sessions->execute();
     $dernieres_sessions = $stmt_sessions->fetchAll(PDO::FETCH_ASSOC);
 
-    // 3. Récupération des Records Personnels (PB)
+    // 4. Récupération des Records Personnels (PB)
     $stmt_pb = $pdo->prepare("
         SELECT 
             e.NOM_COM, 
@@ -82,8 +97,8 @@ try {
     <!-- BANNIÈRE RESPONSIVE -->
     <header class="profile-banner-responsive" <?php if(!empty($profil['BANNIERE_CHEMIN'])) echo 'style="background-image: url(\'' . htmlspecialchars($profil['BANNIERE_CHEMIN']) . '\');"'; ?>>
         
-        <!-- BOUTON DÉCONNEXION (Roue crantée) -->
-        <a href="deconnexion.php" class="settings-btn" title="Se déconnecter">
+        <!-- BOUTON PARAMÈTRES (Roue crantée) -->
+        <a href="parametre.php" class="settings-btn" title="Paramètres">
             <span class="material-symbols-rounded">settings</span>
         </a>
         
@@ -135,7 +150,7 @@ try {
 
                 <div class="tab-content" id="profil-tabsContent">
                     
-                    <!-- ================= CONTENU : DERNIÈRES SORTIES ================= -->
+                    <!-- ================= CONTENU : DERNIÈRES SORTIES AVEC PAGINATION ================= -->
                     <div class="tab-pane fade show active" id="tab-sessions" role="tabpanel">
                         <?php if(empty($dernieres_sessions)): ?>
                             <div class="card border-0 shadow-sm rounded-4 p-5 text-center bg-white mt-4">
@@ -149,7 +164,6 @@ try {
                                         <a href="detail_session.php?id=<?= $sess['ID_SESSION'] ?>" class="text-decoration-none text-dark d-block h-100 hover-card">
                                             <div class="card border-0 shadow-sm rounded-4 bg-white overflow-hidden h-100 d-flex flex-column">
                                                 
-                                                <!-- IMAGE DE LA SESSION (Vraie photo ou Illustration générique) -->
                                                 <div class="position-relative">
                                                     <?php if(!empty($sess['premiere_photo'])): ?>
                                                         <img src="<?= htmlspecialchars($sess['premiere_photo']) ?>" class="card-img-top w-100" style="height: 220px; object-fit: cover;" alt="Photo session">
@@ -161,13 +175,11 @@ try {
                                                         </div>
                                                     <?php endif; ?>
                                                     
-                                                    <!-- Badge de date sur l'image -->
                                                     <span class="badge bg-dark bg-opacity-75 text-white position-absolute top-0 end-0 m-3 px-3 py-2 rounded-pill shadow-sm fs-6">
                                                         <?= date('d/m/Y', strtotime($sess['DATE_DEBUT'])) ?>
                                                     </span>
                                                 </div>
                                                 
-                                                <!-- INFOS SOUS L'IMAGE -->
                                                 <div class="card-body p-4 d-flex flex-column justify-content-between">
                                                     <div>
                                                         <h5 class="fw-bold mb-1 text-dark">
@@ -184,12 +196,29 @@ try {
                                                         </span>
                                                     </div>
                                                 </div>
-                                                
                                             </div>
                                         </a>
                                     </div>
                                 <?php endforeach; ?>
                             </div>
+
+                            <!-- PAGINATION DES SESSIONS -->
+                            <?php if ($total_pages > 1): ?>
+                                <nav aria-label="Pagination des sessions" class="mt-5">
+                                    <ul class="pagination justify-content-center">
+                                        <li class="page-item <?= ($page <= 1) ? 'disabled' : '' ?>">
+                                            <a class="page-link rounded-pill px-4 me-2 border-0 shadow-sm fw-medium" href="?page=<?= $page - 1 ?>#tab-sessions">Précédent</a>
+                                        </li>
+                                        <li class="page-item disabled">
+                                            <span class="page-link border-0 bg-transparent text-dark fw-bold px-3"><?= $page ?> / <?= $total_pages ?></span>
+                                        </li>
+                                        <li class="page-item <?= ($page >= $total_pages) ? 'disabled' : '' ?>">
+                                            <a class="page-link rounded-pill px-4 ms-2 border-0 shadow-sm fw-medium" href="?page=<?= $page + 1 ?>#tab-sessions">Suivant</a>
+                                        </li>
+                                    </ul>
+                                </nav>
+                            <?php endif; ?>
+
                         <?php endif; ?>
                     </div>
 
@@ -205,8 +234,6 @@ try {
                                 <?php foreach($records_personnels as $rec): ?>
                                     <div class="col-12 col-md-6 col-lg-4">
                                         <div class="card border-0 shadow-sm rounded-4 p-3 d-flex flex-row align-items-center bg-white hover-card">
-                                            
-                                            <!-- Icône du poisson -->
                                             <div class="bg-light rounded-3 p-2 me-3 d-flex justify-content-center align-items-center" style="width: 70px; height: 70px;">
                                                 <?php if(!empty($rec['ICONE_CHEMIN'])): ?>
                                                     <img src="<?= htmlspecialchars($rec['ICONE_CHEMIN']) ?>" alt="Icone" style="max-width: 100%; max-height: 100%; object-fit: contain;">
@@ -214,13 +241,11 @@ try {
                                                     <span class="material-symbols-rounded text-secondary" style="font-size: 40px;">set_meal</span>
                                                 <?php endif; ?>
                                             </div>
-                                            
                                             <div class="flex-grow-1">
                                                 <h6 class="fw-bold mb-1 text-dark fs-5">
                                                     <?= htmlspecialchars($rec['NOM_COM']) ?> <span class="text-primary">: <?= $rec['record_taille'] ?> cm</span>
                                                 </h6>
                                             </div>
-                                            
                                             <span class="material-symbols-rounded text-warning fs-3 opacity-50 ms-2">emoji_events</span>
                                         </div>
                                     </div>
@@ -251,5 +276,19 @@ try {
     </nav>
 
     <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/js/bootstrap.bundle.min.js"></script>
+    
+    <!-- Script pour restaurer le bon onglet après un changement de page de pagination -->
+    <script>
+        document.addEventListener('DOMContentLoaded', function() {
+            if(window.location.hash) {
+                var hash = window.location.hash;
+                var tabBtn = document.querySelector('button[data-bs-target="' + hash + '"]');
+                if(tabBtn) {
+                    var tab = new bootstrap.Tab(tabBtn);
+                    tab.show();
+                }
+            }
+        });
+    </script>
 </body>
 </html>
