@@ -1,13 +1,12 @@
 codex :
-    asset a changé : sandre, truite F, Vairon, silure, rousette petite, orphie, breme x2 , brochet
+    asset a changé : 
 
 BDD :
     espece maquante : coquette,Merlan,cernier
 
 Ajout session :
-    On ne peut pas preciser la quantité de prise
-    L'heure de capture des prise est tjr la meme
-    Le temps (soleil) et la marre est pas recup
+    voir si je peut mettre une api pour recup la marre (marre.info)
 
 Coté reseau sociale : 
     Pouvoir épinglé des sessions sur son profil
+    géré la modération des images publiée (URGENT)

@@ -42,6 +42,8 @@ if (isset($_SESSION['user_id'])) {
             </a>
         </div>
     </main>
-
+    <div class="text-center mt-5 mb-3">
+        <a href="mentions_legales.php" class="text-muted small text-decoration-none">Mentions légales & Confidentialité</a>
+    </div>
 </body>
 </html>
