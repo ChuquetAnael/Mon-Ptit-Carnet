@@ -1,12 +1,5 @@
 <?php
-session_start();
-
-if (!isset($_SESSION['user_id'])) {
-    header('Location: connexion.php');
-    exit();
-}
-
-require_once './bdd/env.php';
+require_once './includes/auth_bdd.php';
 require_once './BDD/BDD_session.php'; // Inclusion de tes fonctions
 
 try {
@@ -281,11 +274,9 @@ if ($etape === 3) {
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Nouvelle Session - Mon Carnet</title>
-    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/css/bootstrap.min.css" rel="stylesheet">
-    <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@400;500;600;700&display=swap" rel="stylesheet">
-    <link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Rounded:opsz,wght,FILL,GRAD@24,400,1,0" rel="stylesheet">
+    <?php include './includes/head.php'; ?>
     <?php if ($etape === 2): ?><link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" /><?php endif; ?>
-    <link href="css/style.css" rel="stylesheet">
+
 </head>
 <body>
 
@@ -518,6 +509,7 @@ if ($etape === 3) {
     </main>
 
     <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/js/bootstrap.bundle.min.js"></script>
+    <script src="script/meteo_map.js"></script>
     <?php include 'script/JS_session.php'; ?>
 </body>
 </html>

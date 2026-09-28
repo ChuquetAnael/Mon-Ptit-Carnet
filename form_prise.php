@@ -215,10 +215,8 @@ try {
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title><?= $action === 'add' ? 'Ajouter une prise' : 'Modifier la prise' ?></title>
     
-    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/css/bootstrap.min.css" rel="stylesheet">
-    <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@400;500;600;700&display=swap" rel="stylesheet">
-    <link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Rounded:opsz,wght,FILL,GRAD@24,400,1,0" rel="stylesheet">
-    <link href="css/style.css" rel="stylesheet">
+    <?php include './includes/head.php'; ?>
+    
 </head>
 <body class="bg-light">
 

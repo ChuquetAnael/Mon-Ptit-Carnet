@@ -1,13 +1,6 @@
 <?php
-session_start();
-
-if (!isset($_SESSION['user_id'])) {
-    header('Location: connexion.php');
-    exit();
-}
-
-require_once './bdd/env.php';
-require_once './BDD/BDD_accueil.php'; //[cite: 4]
+require_once './includes/auth_bdd.php';
+require_once './BDD/BDD_accueil.php'; 
 
 try {
     $pdo = new PDO("mysql:host=$host;dbname=$dbname;charset=utf8", $user, $pass);
@@ -36,7 +29,7 @@ try {
     die("Erreur de connexion : " . $e->getMessage());
 }
 
-nettoyerImagesOrphelines($pdo, $_SESSION['user_id']); //[cite: 4]
+nettoyerImagesOrphelines($pdo, $_SESSION['user_id']);
 
 ?>
 
@@ -46,11 +39,8 @@ nettoyerImagesOrphelines($pdo, $_SESSION['user_id']); //[cite: 4]
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Tableau de bord - Mon Carnet de Pêche</title>
-    
-    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/css/bootstrap.min.css" rel="stylesheet">
-    <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@400;500;600;700&display=swap" rel="stylesheet">
-    <link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Rounded:opsz,wght,FILL,GRAD@24,400,1,0" rel="stylesheet">
-    <link href="css/style.css" rel="stylesheet">
+
+    <?php include './includes/head.php'; ?>
     
     <style>
         /* Animation moderne au survol pour les nouvelles tuiles */
@@ -189,22 +179,7 @@ nettoyerImagesOrphelines($pdo, $_SESSION['user_id']); //[cite: 4]
 
     </main>
 
-    <!-- Navbar inchangée[cite: 4] -->
-    <nav class="navbar fixed-bottom bg-white custom-navbar border-0">
-        <div class="container-fluid d-flex justify-content-around align-items-end px-2">
-            <a href="accueil.php" class="nav-item active d-flex flex-column align-items-center">
-                <span class="material-symbols-rounded">home</span>
-                <span class="menu-text">Accueil</span>
-            </a>
-            <a href="nouvelle_session.php" class="btn-add-catch">
-                <span class="material-symbols-rounded text-white" style="font-size: 36px;">phishing</span>
-            </a>
-            <a href="profil.php" class="nav-item d-flex flex-column align-items-center">
-                <span class="material-symbols-rounded">person</span>
-                <span class="menu-text">Profil</span>
-            </a>
-        </div>
-    </nav>
+    <?php include './includes/navbar.php'; ?>
 
     <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/js/bootstrap.bundle.min.js"></script>
 </body>

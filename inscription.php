@@ -1,12 +1,6 @@
 <?php
-session_start();
+require_once './includes/auth_bdd.php';
 
-if (isset($_SESSION['user_id'])) {
-    header('Location: index.php');
-    exit();
-}
-
-require_once './bdd/env.php';
 $message_erreur = "";
 $message_succes = "";
 
@@ -46,10 +40,7 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Inscription - Mon Carnet de Pêche</title>
-    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/css/bootstrap.min.css" rel="stylesheet">
-    <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@400;500;600;700&display=swap" rel="stylesheet">
-    <link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Rounded:opsz,wght,FILL,GRAD@24,400,1,0" rel="stylesheet">
-    <link href="css/style.css" rel="stylesheet">
+    <?php include './includes/head.php'; ?>
 </head>
 <body style="padding-bottom: 0;">
 
@@ -90,7 +81,15 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
                     <input type="password" class="form-control form-control-lg bg-light border-0" name="mot_de_passe" required>
                 </div>
                 
-                <div class="d-grid mt-5">
+                <!-- Ajout de la case à cocher pour les CGU -->
+                <div class="form-check mt-4 mb-2">
+                    <input class="form-check-input" type="checkbox" id="cgu_check" name="cgu_check" required>
+                    <label class="form-check-label small text-secondary" for="cgu_check">
+                        En créant un compte, j'accepte les <a href="cgu.php" target="_blank" class="text-primary fw-medium text-decoration-none">Conditions Générales d'Utilisation</a>
+                    </label>
+                </div>
+                
+                <div class="d-grid mt-4">
                     <button type="submit" class="btn btn-primary btn-lg rounded-pill fw-semibold shadow-sm custom-btn-submit">
                         S'inscrire
                     </button>
