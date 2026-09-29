@@ -38,6 +38,12 @@ function fetchWeather(lat, lng) {
     let dateYMD = datetimeStr.split('T')[0];
     // Formatage de l'heure cible pour la recherche : YYYY-MM-DDTHH:00
     let targetHour = datetimeStr.substring(0, 13) + ":00"; 
+    
+    // On lance l'analyse de la marée uniquement si l'interrupteur est déjà coché
+    let toggleMaree = document.getElementById('toggle-maree');
+    if (toggleMaree && toggleMaree.checked) {
+        fetchTide(lat, lng, dateYMD, targetHour);
+    }
 
     // 2. On détermine si on a besoin des archives (si la date a plus de 5 jours)
     let sessionDate = new Date(datetimeStr);
@@ -127,6 +133,23 @@ document.addEventListener("DOMContentLoaded", function() {
             fetchWeather(currentLat, currentLng);
         }
     });
+
+    let toggleMaree = document.getElementById('toggle-maree');
+    if (toggleMaree) {
+        toggleMaree.addEventListener('change', function() {
+            if (this.checked) {
+                let lat = parseFloat(document.getElementById('input_lat').value);
+                let lng = parseFloat(document.getElementById('input_lng').value);
+                let datetimeStr = document.querySelector('input[name="date_debut"]').value;
+                
+                if(!isNaN(lat) && datetimeStr) {
+                    let dateYMD = datetimeStr.split('T')[0];
+                    let targetHour = datetimeStr.substring(0, 13) + ":00";
+                    fetchTide(lat, lng, dateYMD, targetHour);
+                }
+            }
+        });
+    }
 });
 
 // Les autres fonctions de base pour toggle l'interface (ne change pas)
@@ -151,4 +174,43 @@ function toggleCapotBtn() {
         btn.classList.remove('btn-secondary');
         btn.classList.add('btn-primary', 'custom-btn-submit');
     }
+}
+
+function fetchTide(lat, lng, dateYMD, targetHour) {
+    // Appel de l'API Marine gratuite d'Open-Meteo (sans clé)
+    let url = `https://marine-api.open-meteo.com/v1/marine?latitude=${lat}&longitude=${lng}&start_date=${dateYMD}&end_date=${dateYMD}&hourly=sea_level_height_msl`;
+
+    fetch(url)
+    .then(response => response.json())
+    .then(data => {
+        if(data.hourly && data.hourly.time) {
+            let idx = data.hourly.time.findIndex(t => t.startsWith(targetHour));
+            
+            // Sécurité pour pouvoir comparer avec l'heure précédente et suivante
+            if(idx > 0 && idx < data.hourly.time.length - 1) {
+                let current = data.hourly.sea_level_height_msl[idx];
+                let prev = data.hourly.sea_level_height_msl[idx - 1];
+                let next = data.hourly.sea_level_height_msl[idx + 1];
+
+                let state = "N/A";
+                
+                // Déduction logique de la courbe de la marée
+                if (current > prev && current > next) {
+                    state = "Haute";
+                } else if (current < prev && current < next) {
+                    state = "Basse";
+                } else if (next > current) {
+                    state = "Montante";
+                } else if (next < current) {
+                    state = "Descendante";
+                }
+
+                // Mise à jour automatique de la liste déroulante
+                let selectMaree = document.querySelector('select[name="desc_maree"]');
+                if(selectMaree && state !== "N/A") {
+                    selectMaree.value = state;
+                }
+            }
+        }
+    }).catch(error => console.log("Erreur API Marine:", error));
 }
