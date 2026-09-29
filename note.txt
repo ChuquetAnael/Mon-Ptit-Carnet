@@ -10,3 +10,6 @@ Ajout session :
 Coté reseau sociale : 
     Pouvoir épinglé des sessions sur son profil
     géré la modération des images publiée (URGENT)
+
+Statistique : 
+    faire d'autre stat

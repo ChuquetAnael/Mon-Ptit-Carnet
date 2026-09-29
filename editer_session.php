@@ -182,7 +182,7 @@ try {
                     <input type="hidden" name="latitude" id="input_lat" value="<?= $lat_map ?>">
                     <input type="hidden" name="longitude" id="input_lng" value="<?= $lng_map ?>">
 
-                    <select class="form-select form-select-lg bg-light border-0 rounded-3 mb-2" name="id_spot" id="spot-select" onchange="handleSpotChange()">
+                    <select class="form-select form-select-lg bg-light border-0 rounded-3 mb-2" name="id_spot" id="spot-select" onchange="toggleNewSpot()">
                         <option value="">Spot non précisé</option>
                         <?php foreach($liste_spots as$spot): ?>
                             <option value="<?= $spot['ID_SPOT'] ?>" data-loc="<?= htmlspecialchars($spot['LOCALISATION'] ?? '') ?>" <?= ($session['ID_SPOT'] ==$spot['ID_SPOT']) ? 'selected' : '' ?>>

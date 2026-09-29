@@ -265,7 +265,7 @@ try {
                 <h5 class="fw-bold mb-4 text-dark border-bottom pb-2">Détails du poisson</h5>
                 
                 <!-- MENU DE RECHERCHE DYNAMIQUE (AVEC ICÔNES) -->
-                <div class="mb-4 dropdown w-100">
+                <div class="mb-4 dropdown custom-select-espece w-100">
                     <label class="form-label text-secondary small fw-bold text-uppercase tracking-wider">Espèce <span class="text-danger">*</span></label>
                     <button class="btn bg-light border-0 w-100 d-flex justify-content-between align-items-center text-start p-3 rounded-4 dropdown-toggle species-btn" type="button" data-bs-toggle="dropdown" aria-expanded="false">
                         <span class="selected-espece-text text-dark d-flex align-items-center fw-medium">
@@ -360,95 +360,13 @@ try {
         </form>
     </main>
 
-    <!-- MODALE FULLSCREEN : BOITE DE PÊCHE -->
-    <div class="modal fade" id="tackleBoxModal" tabindex="-1" aria-hidden="true">
-        <div class="modal-dialog modal-fullscreen-md-down modal-dialog-scrollable">
-            <div class="modal-content border-0">
-                <div class="modal-header border-0 shadow-sm bg-primary text-white pb-3 pt-4">
-                    <h5 class="modal-title fw-bold"><span class="material-symbols-rounded align-middle me-2">phishing</span>Ma Boîte de Pêche</h5>
-                    <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Fermer"></button>
-                </div>
-                <div class="modal-body bg-light pt-4">
-                    <ul class="nav nav-pills mb-4 nav-fill" id="tackle-tab" role="tablist">
-                        <li class="nav-item" role="presentation"><button class="nav-link active rounded-pill fw-medium" data-bs-toggle="pill" data-bs-target="#tab-leurres" type="button">Leurres</button></li>
-                        <li class="nav-item" role="presentation"><button class="nav-link rounded-pill fw-medium" data-bs-toggle="pill" data-bs-target="#tab-appats" type="button">Appâts</button></li>
-                    </ul>
-                    <div class="tab-content" id="tackle-tabContent">
-                        <div class="tab-pane fade show active" id="tab-leurres">
-                            <button class="btn btn-outline-primary w-100 rounded-3 mb-4 fw-bold border-2 border-dashed py-3" type="button" data-bs-toggle="collapse" data-bs-target="#collapseNewLeurre">+ Créer un nouveau leurre perso</button>
-                            <div class="collapse mb-4" id="collapseNewLeurre">
-                                <div class="card card-body border-0 shadow-sm rounded-4">
-                                    <form id="form-new-leurre">
-                                        <input type="text" class="form-control bg-light border-0 mb-3" id="new-l-nom" placeholder="Nom (ex: Black Minnow)">
-                                        <select class="form-select bg-light border-0 mb-3" id="new-l-type">
-                                            <option value="" selected disabled>Type de leurre...</option>
-                                            <?php foreach($types_leurre as$tl): ?><option value="<?= $tl[0] ?>"><?= htmlspecialchars($tl[1]) ?></option><?php endforeach; ?>
-                                        </select>
-                                        <div class="row g-2 mb-4">
-                                            <div class="col-6"><input type="number" step="0.1" class="form-control bg-light border-0" id="new-l-poids" placeholder="Poids (g)"></div>
-                                            <div class="col-6"><input type="text" class="form-control bg-light border-0" id="new-l-couleur" placeholder="Coloris"></div>
-                                        </div>
-                                        <button type="button" class="btn btn-primary rounded-pill w-100 fw-semibold" onclick="saveNewLeurre()">Ajouter à la boîte</button>
-                                    </form>
-                                </div>
-                            </div>
-                            <div id="list-leurres"></div>
-                        </div>
-                        <div class="tab-pane fade" id="tab-appats">
-                            <button class="btn btn-outline-primary w-100 rounded-3 mb-4 fw-bold border-2 border-dashed py-3" type="button" data-bs-toggle="collapse" data-bs-target="#collapseNewAppat">+ Créer un nouvel appât perso</button>
-                            <div class="collapse mb-4" id="collapseNewAppat">
-                                <div class="card card-body border-0 shadow-sm rounded-4">
-                                    <form id="form-new-appat">
-                                        <input type="text" class="form-control bg-light border-0 mb-3" id="new-a-nom" placeholder="Nom de l'appât">
-                                        <select class="form-select bg-light border-0 mb-4" id="new-a-type">
-                                            <option value="" selected disabled>Catégorie...</option>
-                                            <?php foreach($types_appat as$ta): ?><option value="<?= $ta[0] ?>"><?= htmlspecialchars($ta[1]) ?></option><?php endforeach; ?>
-                                        </select>
-                                        <button type="button" class="btn btn-primary rounded-pill w-100 fw-semibold" onclick="saveNewAppat()">Ajouter à la boîte</button>
-                                    </form>
-                                </div>
-                            </div>
-                            <div id="list-appats"></div>
-                        </div>
-                    </div>
-                </div>
-            </div>
-        </div>
-    </div>
+    <?php include './includes/modal_boite_peche.php'; ?>
 
     <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/js/bootstrap.bundle.min.js"></script>
     
     <script>
-        // 1. RECHERCHE D'ESPÈCE (Gestion D-FLEX vs D-NONE)
-        document.querySelector('.search-espece').addEventListener('input', function() {
-            const term = this.value.toLowerCase().trim();
-            const options = document.querySelectorAll('.espece-option');
-            
-            options.forEach(opt => {
-                const text = opt.innerText.toLowerCase();
-                if (text.includes(term)) {
-                    opt.style.setProperty('display', 'flex', 'important');
-                } else {
-                    opt.style.setProperty('display', 'none', 'important');
-                }
-            });
-        });
 
-        document.querySelectorAll('.espece-option').forEach(opt => {
-            opt.addEventListener('click', function(e) {
-                e.preventDefault();
-                // Copier la valeur dans l'input caché
-                document.querySelector('.hidden-espece-input').value = this.getAttribute('data-value');
-                // Copier l'icône et le texte dans le bouton visible
-                document.querySelector('.selected-espece-text').innerHTML = this.innerHTML;
-                
-                // Fermer le menu Bootstrap
-                const bsDropdown = bootstrap.Dropdown.getInstance(document.querySelector('.species-btn')) || new bootstrap.Dropdown(document.querySelector('.species-btn'));
-                bsDropdown.hide();
-            });
-        });
-
-        // 2. PRÉVISUALISATION D'IMAGE
+        // 1. PRÉVISUALISATION D'IMAGE
         function previewImage(input) {
             const preview = document.getElementById('image_preview');
             preview.innerHTML = '';
@@ -461,122 +379,13 @@ try {
             }
         }
 
-        // 3. GESTION DE LA BOÎTE DE PÊCHE (AJOUT ET RENDU)
+        // 2. GESTION DE LA BOÎTE DE PÊCHE (AJOUT ET RENDU)
         let leurres = <?php echo json_encode($liste_leurres, JSON_HEX_TAG | JSON_HEX_APOS | JSON_HEX_QUOT | JSON_HEX_AMP); ?>;
         let appats = <?php echo json_encode($liste_appats, JSON_HEX_TAG | JSON_HEX_APOS | JSON_HEX_QUOT | JSON_HEX_AMP); ?>;
         const typesLeurre = <?php echo json_encode($types_leurre, JSON_HEX_TAG | JSON_HEX_APOS | JSON_HEX_QUOT | JSON_HEX_AMP); ?>;
         const typesAppat = <?php echo json_encode($types_appat, JSON_HEX_TAG | JSON_HEX_APOS | JSON_HEX_QUOT | JSON_HEX_AMP); ?>;
-        
-        let tackleModalInstance = null;
 
-        function renderTackleBox() {
-            let htmlLeurres = '';
-            typesLeurre.forEach(type => {
-                let items = leurres.filter(l => l.ID_TYPE == type[0]);
-                if(items.length > 0) {
-                    htmlLeurres += `<h6 class="fw-bold mt-4 mb-3 text-primary border-bottom pb-2">${type[1]}</h6><div class="row g-2">`;
-                    items.forEach(l => {
-                        let desc = l.GRAMMAGE ? `${l.GRAMMAGE}g` : '';
-                        let col = l.COLORIS ? `${l.COLORIS}` : '';
-                        let details = [desc, col].filter(Boolean).join(' - ');
-                        htmlLeurres += `
-                        <div class="col-6">
-                            <div class="card border border-primary-subtle h-100 shadow-sm" onclick="selectTackle('leurre', '${l.ID_LEURRE}', '${l.NOM_LEURRE.replace(/'/g, "\\'")}', '${details}')" style="cursor:pointer;">
-                                <div class="card-body p-2 text-center">
-                                    <span class="d-block fw-bold text-dark small">${l.NOM_LEURRE}</span>
-                                    <span class="d-block text-muted" style="font-size:0.65rem;">${details}</span>
-                                </div>
-                            </div>
-                        </div>`;
-                    });
-                    htmlLeurres += `</div>`;
-                }
-            });
-            document.getElementById('list-leurres').innerHTML = htmlLeurres;
-
-            let htmlAppats = '';
-            typesAppat.forEach(type => {
-                let items = appats.filter(a => a.ID_TYPE_APPAT == type[0]);
-                if(items.length > 0) {
-                    htmlAppats += `<h6 class="fw-bold mt-4 mb-3 text-primary border-bottom pb-2">${type[1]}</h6><div class="row g-2">`;
-                    items.forEach(a => {
-                        htmlAppats += `
-                        <div class="col-6">
-                            <div class="card border border-primary-subtle h-100 shadow-sm" onclick="selectTackle('appat', '${a.ID_APPAT}', '${a.NOM_APPAT.replace(/'/g, "\\'")}', '')" style="cursor:pointer;">
-                                <div class="card-body p-2 text-center">
-                                    <span class="d-block fw-bold text-dark small">${a.NOM_APPAT}</span>
-                                </div>
-                            </div>
-                        </div>`;
-                    });
-                    htmlAppats += `</div>`;
-                }
-            });
-            document.getElementById('list-appats').innerHTML = htmlAppats;
-        }
-
-        function openTackleBox() {
-            renderTackleBox();
-            if(!tackleModalInstance) tackleModalInstance = new bootstrap.Modal(document.getElementById('tackleBoxModal'));
-            tackleModalInstance.show();
-        }
-
-        function selectTackle(type, id, nom, details) {
-            const displayStr = details ? `${nom} (${details})` : nom;
-            const btn = document.getElementById('tackle-text');
-            btn.innerText = displayStr;
-            btn.classList.replace('text-muted', 'text-dark');
-            btn.classList.add('fw-bold');
-            
-            if(type === 'leurre') {
-                document.getElementById('hidden-leurre').value = id;
-                document.getElementById('hidden-appat').value = '';
-            } else {
-                document.getElementById('hidden-appat').value = id;
-                document.getElementById('hidden-leurre').value = '';
-            }
-            tackleModalInstance.hide();
-        }
-
-        function saveNewLeurre() {
-            let nom = document.getElementById('new-l-nom').value;
-            let type = document.getElementById('new-l-type').value;
-            let poids = document.getElementById('new-l-poids').value;
-            let couleur = document.getElementById('new-l-couleur').value;
-            if(!nom || !type) { alert("Veuillez renseigner le nom et le type du leurre."); return; }
-            
-            let tempId = 'new_l_' + Date.now();
-            leurres.push({ ID_LEURRE: tempId, NOM_LEURRE: nom, ID_TYPE: type, GRAMMAGE: poids, COLORIS: couleur });
-            
-            document.getElementById('new-items-container').insertAdjacentHTML('beforeend', `
-                <input type="hidden" name="new_leurres[${tempId}][nom]" value="${nom}">
-                <input type="hidden" name="new_leurres[${tempId}][type]" value="${type}">
-                <input type="hidden" name="new_leurres[${tempId}][poids]" value="${poids}">
-                <input type="hidden" name="new_leurres[${tempId}][couleur]" value="${couleur}">
-            `);
-            
-            document.getElementById('form-new-leurre').reset();
-            bootstrap.Collapse.getInstance(document.getElementById('collapseNewLeurre')).hide();
-            renderTackleBox();
-        }
-
-        function saveNewAppat() {
-            let nom = document.getElementById('new-a-nom').value;
-            let type = document.getElementById('new-a-type').value;
-            if(!nom || !type) { alert("Veuillez renseigner le nom et la catégorie."); return; }
-            
-            let tempId = 'new_a_' + Date.now();
-            appats.push({ ID_APPAT: tempId, NOM_APPAT: nom, ID_TYPE_APPAT: type });
-            
-            document.getElementById('new-items-container').insertAdjacentHTML('beforeend', `
-                <input type="hidden" name="new_appats[${tempId}][nom]" value="${nom}">
-                <input type="hidden" name="new_appats[${tempId}][type]" value="${type}">
-            `);
-            
-            document.getElementById('form-new-appat').reset();
-            bootstrap.Collapse.getInstance(document.getElementById('collapseNewAppat')).hide();
-            renderTackleBox();
-        }
     </script>
+    <script src="script/gestion_prise.js"></script>
 </body>
 </html>
