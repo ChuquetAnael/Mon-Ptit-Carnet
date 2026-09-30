@@ -1,0 +1,41 @@
+.stat-kpi {
+    background-color: #f8f9fa;
+    border-radius: 1rem;
+    padding: 1.2rem;
+    text-align: center;
+    border: 1px solid #e9ecef;
+    height: 100%;
+}
+.top-bar-stats {
+    background: linear-gradient(135deg, #00c6ff 0%, #0072ff 100%);
+    border-bottom-left-radius: 20px;
+    border-bottom-right-radius: 20px;
+    position: relative;
+}
+.btn-back {
+    position: absolute;
+    left: 15px;
+    top: 50%;
+    transform: translateY(-50%);
+    color: white;
+    text-decoration: none;
+}
+.list-group-item {
+    border-color: rgba(0,0,0,0.05);
+}
+.chart-container {
+    position: relative;
+    height: 300px;
+    width: 100%;
+}
+.chart-container-sm {
+    position: relative;
+    height: 220px;
+    width: 100%;
+}
+.chart-container-radar {
+    position: relative;
+    height: 280px;
+    width: 100%;
+    margin: 0 auto;
+}
