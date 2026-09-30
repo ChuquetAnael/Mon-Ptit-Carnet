@@ -248,7 +248,21 @@ try {
         </div>
     </main>
 
-    <?php include './includes/navbar.php'; ?>
+    <nav class="navbar fixed-bottom bg-white custom-navbar border-0 shadow-lg">
+        <div class="container-fluid d-flex justify-content-around align-items-end px-2">
+            <a href="accueil.php" class="nav-item d-flex flex-column align-items-center text-secondary text-decoration-none">
+                <span class="material-symbols-rounded">home</span>
+                <span class="menu-text" style="font-size: 0.75rem;">Accueil</span>
+            </a>
+            <a href="nouvelle_session.php" class="btn-add-catch">
+                <span class="material-symbols-rounded text-white" style="font-size: 36px;">phishing</span>
+            </a>
+            <a href="profil.php" class="nav-item active d-flex flex-column align-items-center text-primary text-decoration-none">
+                <span class="material-symbols-rounded">person</span>
+                <span class="menu-text" style="font-size: 0.75rem;">Profil</span>
+            </a>
+        </div>
+    </nav>
 
     <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/js/bootstrap.bundle.min.js"></script>
     

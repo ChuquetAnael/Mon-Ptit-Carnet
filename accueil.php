@@ -3,17 +3,14 @@ require_once './includes/auth_bdd.php';
 require_once './BDD/BDD_accueil.php'; 
 
 try {
-    $pdo = new PDO("mysql:host=$host;dbname=$dbname;charset=utf8", $user, $pass);
-    $pdo->setAttribute(PDO::ATTR_ERRMODE, PDO::ERRMODE_EXCEPTION);
+    $pdo = new PDO("mysql:host=$host;dbname=$dbname;charset=utf8", $user, $pass);$pdo->setAttribute(PDO::ATTR_ERRMODE, PDO::ERRMODE_EXCEPTION);
 
-    // 1. Récupération du pseudo pour un accueil personnalisé[cite: 3]
-    $stmtUser = $pdo->prepare("SELECT PSEUDO FROM UTILISATEUR WHERE ID_UTILISATEUR = :id");
-    $stmtUser->execute(['id' => $_SESSION['user_id']]);
-    $utilisateur = $stmtUser->fetch(PDO::FETCH_ASSOC);
-    $pseudo = $utilisateur ? $utilisateur['PSEUDO'] : 'Pêcheur';
+    // 1. Récupération du pseudo pour un accueil personnalisé
+    $stmtUser =$pdo->prepare("SELECT PSEUDO FROM UTILISATEUR WHERE ID_UTILISATEUR = :id");
+    $stmtUser->execute(['id' => $_SESSION['user_id']]);$utilisateur = $stmtUser->fetch(PDO::FETCH_ASSOC);$pseudo = $utilisateur ? $utilisateur['PSEUDO'] : 'Pêcheur';
 
     // 2. Récupération dynamique des 3 dernières prises de l'utilisateur
-    $stmtPrises = $pdo->prepare("
+    $stmtPrises =$pdo->prepare("
         SELECT p.PHOTO_CHEMIN, p.TAILLE_CM, e.NOM_COM, e.ICONE_CHEMIN, p.DATE_HEURE
         FROM PRISE p
         JOIN ESPECE e ON p.ID_ESPECE = e.ID_ESPECE
@@ -22,14 +19,14 @@ try {
         ORDER BY p.DATE_HEURE DESC
         LIMIT 3
     ");
-    $stmtPrises->execute(['id_user' => $_SESSION['user_id']]);
-    $dernieres_prises = $stmtPrises->fetchAll(PDO::FETCH_ASSOC);
+    $stmtPrises->execute(['id_user' =>$_SESSION['user_id']]);
+    $dernieres_prises =$stmtPrises->fetchAll(PDO::FETCH_ASSOC);
 
 } catch (PDOException $e) {
     die("Erreur de connexion : " . $e->getMessage());
 }
 
-nettoyerImagesOrphelines($pdo, $_SESSION['user_id']);
+nettoyerImagesOrphelines($pdo,$_SESSION['user_id']);
 
 ?>
 
@@ -39,8 +36,11 @@ nettoyerImagesOrphelines($pdo, $_SESSION['user_id']);
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Tableau de bord - Mon Carnet de Pêche</title>
-
-    <?php include './includes/head.php'; ?>
+    
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Rounded:opsz,wght,FILL,GRAD@24,400,1,0" rel="stylesheet">
+    <link href="css/style.css" rel="stylesheet">
     
     <style>
         /* Animation moderne au survol pour les nouvelles tuiles */
@@ -59,6 +59,10 @@ nettoyerImagesOrphelines($pdo, $_SESSION['user_id']);
             object-fit: cover;
             border-radius: 12px;
         }
+        /* Style spécifique au widget météo */
+        .weather-widget {
+            background: linear-gradient(135deg, #fdfbfb 0%, #ebedee 100%);
+        }
     </style>
 </head>
 <body>
@@ -70,6 +74,42 @@ nettoyerImagesOrphelines($pdo, $_SESSION['user_id']);
     </header>
 
     <main class="container pb-5 mb-5">
+        
+        <!-- WIDGET MÉTÉO DYNAMIQUE (Amélioré) -->
+        <a href="meteo.php" class="text-decoration-none d-block mb-4">
+            <div class="card border-0 shadow-sm rounded-4 weather-widget tool-card">
+                <div class="card-body p-3">
+                    <!-- Haut du widget : Ciel & Température -->
+                    <div class="d-flex align-items-center justify-content-between mb-3">
+                        <div class="d-flex align-items-center">
+                            <div class="bg-primary bg-opacity-10 text-primary rounded-circle d-flex align-items-center justify-content-center me-3" style="width: 50px; height: 50px;">
+                                <span class="material-symbols-rounded fs-2" id="weather-icon">location_searching</span>
+                            </div>
+                            <div>
+                                <h6 class="fw-bold text-dark mb-0" id="weather-desc">Localisation...</h6>
+                                <small class="text-muted d-block" id="weather-city" style="font-size: 0.75rem;">Recherche météo</small>
+                            </div>
+                        </div>
+                        <div class="text-end">
+                            <h3 class="fw-bold text-primary mb-0" id="weather-temp">--°</h3>
+                        </div>
+                    </div>
+                    
+                    <!-- Bas du widget : Pression & Vent -->
+                    <div class="d-flex justify-content-around border-top pt-2 mt-1">
+                        <div class="text-center d-flex align-items-center">
+                            <span class="material-symbols-rounded text-primary me-2" style="font-size: 20px;">compress</span>
+                            <small class="fw-bold text-secondary" id="weather-press">-- hPa</small>
+                        </div>
+                        <div class="text-center d-flex align-items-center">
+                            <span class="material-symbols-rounded text-info me-2" style="font-size: 20px;">air</span>
+                            <small class="fw-bold text-secondary" id="weather-wind">-- km/h</small>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </a>
+
         <!-- Section Outils (Transformée en grille moderne 2x2) -->
         <div class="d-flex justify-content-between align-items-end mb-3">
             <h2 class="h6 fw-bold text-secondary text-uppercase mb-0">Mes Outils</h2>
@@ -115,7 +155,7 @@ nettoyerImagesOrphelines($pdo, $_SESSION['user_id']);
                 </a>
             </div>
 
-            <!-- Tuile 4 : Statistiques (Nouveau) -->
+            <!-- Tuile 4 : Statistiques -->
             <div class="col-6">
                 <a href="statistiques.php" class="card border-0 shadow-sm rounded-4 text-decoration-none h-100 tool-card bg-white">
                     <div class="card-body text-center p-3">
@@ -138,17 +178,14 @@ nettoyerImagesOrphelines($pdo, $_SESSION['user_id']);
         </div>
         
         <?php if (empty($dernieres_prises)): ?>
-            <!-- Affichage vide si aucune prise[cite: 4] -->
             <div class="card border-0 shadow-sm rounded-4 text-center p-5 mt-2">
                 <span class="material-symbols-rounded text-muted mb-3" style="font-size: 48px;">phishing</span>
                 <p class="text-muted mb-0">Aucune prise enregistrée pour le moment.<br>Préparez votre matériel !</p>
             </div>
         <?php else: ?>
-            <!-- Liste dynamique des dernières prises -->
             <div class="d-flex flex-column gap-3">
-                <?php foreach($dernieres_prises as $prise): ?>
+                <?php foreach($dernieres_prises as$prise): ?>
                     <div class="card border-0 shadow-sm rounded-4 bg-white p-3 d-flex flex-row align-items-center">
-                        <!-- Photo de la prise ou icône par défaut -->
                         <?php if (!empty($prise['PHOTO_CHEMIN'])): ?>
                             <img src="<?= htmlspecialchars($prise['PHOTO_CHEMIN']) ?>" class="mini-catch-img shadow-sm" alt="Prise">
                         <?php else: ?>
@@ -157,7 +194,6 @@ nettoyerImagesOrphelines($pdo, $_SESSION['user_id']);
                             </div>
                         <?php endif; ?>
                         
-                        <!-- Informations -->
                         <div class="ms-3 flex-grow-1">
                             <h6 class="fw-bold text-dark mb-1 d-flex align-items-center">
                                 <?php if(!empty($prise['ICONE_CHEMIN'])): ?>
@@ -179,8 +215,102 @@ nettoyerImagesOrphelines($pdo, $_SESSION['user_id']);
 
     </main>
 
-    <?php include './includes/navbar.php'; ?>
+    <nav class="navbar fixed-bottom bg-white custom-navbar border-0 shadow-lg">
+        <div class="container-fluid d-flex justify-content-around align-items-end px-2">
+            <a href="accueil.php" class="nav-item active d-flex flex-column align-items-center text-primary text-decoration-none">
+                <span class="material-symbols-rounded">home</span>
+                <span class="menu-text" style="font-size: 0.75rem;">Accueil</span>
+            </a>
+            <a href="nouvelle_session.php" class="btn-add-catch">
+                <span class="material-symbols-rounded text-white" style="font-size: 36px;">phishing</span>
+            </a>
+            <a href="profil.php" class="nav-item d-flex flex-column align-items-center text-secondary text-decoration-none">
+                <span class="material-symbols-rounded">person</span>
+                <span class="menu-text" style="font-size: 0.75rem;">Profil</span>
+            </a>
+        </div>
+    </nav>
 
     <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/js/bootstrap.bundle.min.js"></script>
+
+    <!-- SCRIPT DU WIDGET MÉTÉO (Géolocalisation & Open-Meteo avec Pression et Vent) -->
+    <script>
+        document.addEventListener('DOMContentLoaded', function() {
+            const weatherDesc = document.getElementById('weather-desc');
+            const weatherTemp = document.getElementById('weather-temp');
+            const weatherCity = document.getElementById('weather-city');
+            const weatherIcon = document.getElementById('weather-icon');
+            const weatherPress = document.getElementById('weather-press');
+            const weatherWind = document.getElementById('weather-wind');
+
+            // Fonction pour traduire le code météo en icône Material Symbol
+            function getWeatherDetails(code) {
+                if(code === 0) return { text: 'Soleil dégagé', icon: 'clear_day' };
+                if(code > 0 && code <= 3) return { text: 'Nuageux', icon: 'partly_cloudy_day' };
+                if(code === 45 || code === 48) return { text: 'Brouillard', icon: 'foggy' };
+                if(code >= 51 && code <= 67) return { text: 'Pluie', icon: 'rainy' };
+                if(code >= 71 && code <= 77) return { text: 'Neige', icon: 'weather_snowy' };
+                if(code >= 80 && code <= 82) return { text: 'Averses', icon: 'rainy' };
+                if(code >= 95) return { text: 'Orage', icon: 'thunderstorm' };
+                return { text: 'Inconnu', icon: 'cloud' };
+            }
+
+            // Traduction des degrés du vent en points cardinaux (basé sur ton code existant)
+            function getWindDirectionStr(degree) {
+                if (degree === null || degree === undefined) return '';
+                if (degree > 337.5 || degree <= 22.5) return 'N';
+                if (degree > 22.5 && degree <= 67.5) return 'NE';
+                if (degree > 67.5 && degree <= 112.5) return 'E';
+                if (degree > 112.5 && degree <= 157.5) return 'SE';
+                if (degree > 157.5 && degree <= 202.5) return 'S';
+                if (degree > 202.5 && degree <= 247.5) return 'SO';
+                if (degree > 247.5 && degree <= 292.5) return 'O';
+                if (degree > 292.5 && degree <= 337.5) return 'NO';
+                return '';
+            }
+
+            // Récupération du GPS du navigateur
+            if ("geolocation" in navigator) {
+                navigator.geolocation.getCurrentPosition(function(position) {
+                    const lat = position.coords.latitude;
+                    const lng = position.coords.longitude;
+                    
+                    // Appel à Open-Meteo avec pression et vent inclus
+                    fetch(`https://api.open-meteo.com/v1/forecast?latitude=${lat}&longitude=${lng}&current=temperature_2m,weathercode,surface_pressure,wind_speed_10m,wind_direction_10m`)
+                    .then(response => response.json())
+                    .then(data => {
+                        if(data.current) {
+                            const details = getWeatherDetails(data.current.weathercode);
+                            const windDir = getWindDirectionStr(data.current.wind_direction_10m);
+                            
+                            // Mise à jour de l'affichage principal
+                            weatherDesc.innerText = details.text;
+                            weatherTemp.innerText = Math.round(data.current.temperature_2m) + '°C';
+                            weatherCity.innerText = "Position actuelle (GPS)";
+                            weatherIcon.innerText = details.icon;
+                            
+                            // Mise à jour des nouvelles données (Pression & Vent)
+                            weatherPress.innerText = Math.round(data.current.surface_pressure) + ' hPa';
+                            weatherWind.innerText = Math.round(data.current.wind_speed_10m) + ' km/h ' + (windDir ? `(${windDir})` : '');
+                        }
+                    })
+                    .catch(error => {
+                        weatherDesc.innerText = 'Erreur réseau';
+                        weatherCity.innerText = 'Impossible de charger la météo';
+                        weatherIcon.innerText = 'cloud_off';
+                    });
+                }, function(error) {
+                    // Si l'utilisateur refuse le GPS
+                    weatherDesc.innerText = 'GPS désactivé';
+                    weatherCity.innerText = 'Activez la localisation pour la météo';
+                    weatherIcon.innerText = 'location_disabled';
+                });
+            } else {
+                weatherDesc.innerText = 'Non supporté';
+                weatherCity.innerText = 'Votre navigateur ne supporte pas le GPS';
+                weatherIcon.innerText = 'location_off';
+            }
+        });
+    </script>
 </body>
 </html>
