@@ -56,6 +56,8 @@
 
 <!-- SCRIPT ÉTAPE 3 : GÉNÉRATION DES PRISES -->
 <?php if ($etape === 3): ?>
+
+<!-- 1. DÉCLARATION DES VARIABLES GLOBALES -->
 <script>
     const especes = <?php echo json_encode($especes, JSON_HEX_TAG | JSON_HEX_APOS | JSON_HEX_QUOT | JSON_HEX_AMP); ?>;
     const techniques = <?php echo json_encode($techniques, JSON_HEX_TAG | JSON_HEX_APOS | JSON_HEX_QUOT | JSON_HEX_AMP); ?>;
@@ -63,7 +65,13 @@
     let appats = <?php echo json_encode($appats, JSON_HEX_TAG | JSON_HEX_APOS | JSON_HEX_QUOT | JSON_HEX_AMP); ?>;
     const typesLeurre = <?php echo json_encode($types_leurre, JSON_HEX_TAG | JSON_HEX_APOS | JSON_HEX_QUOT | JSON_HEX_AMP); ?>;
     const typesAppat = <?php echo json_encode($types_appat, JSON_HEX_TAG | JSON_HEX_APOS | JSON_HEX_QUOT | JSON_HEX_AMP); ?>;
-    
+</script>
+
+<!-- 2. CHARGEMENT DU FICHIER EXTERNE AVANT SON UTILISATION -->
+<script src="script/gestion_prise.js"></script>
+
+<!-- 3. EXÉCUTION PRINCIPALE -->
+<script>
     let catchIndex = 0;
 
     function addCatchCard(photoObj) {
@@ -154,6 +162,8 @@
         </div>`;
         
         document.getElementById('catches-container').insertAdjacentHTML('beforeend', html);
+        
+        // La fonction existe désormais au moment où elle est appelée !
         attachDropdownEvents();
     }
 
@@ -190,5 +200,4 @@
         }
     });
 </script>
-<script src="script/gestion_prise.js"></script>
 <?php endif; ?>
