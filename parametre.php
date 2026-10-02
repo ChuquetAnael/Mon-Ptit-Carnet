@@ -10,6 +10,16 @@ try {
     $pdo->setAttribute(PDO::ATTR_ERRMODE, PDO::ERRMODE_EXCEPTION);
 
     // =========================================================================
+    // VÉRIFICATION DES DROITS ADMINISTRATEUR
+    // =========================================================================
+    $is_admin = false;
+    $stmtAdmin = $pdo->prepare("SELECT 1 FROM ADMIN WHERE ID_UTILISATEUR = :id");
+    $stmtAdmin->execute(['id' => $id_user]);
+    if ($stmtAdmin->fetch()) {
+        $is_admin = true;
+    }
+
+    // =========================================================================
     // GESTION DE LA SUPPRESSION DU COMPTE
     // =========================================================================
     if (isset($_POST['delete_account']) && !empty($_POST['password_confirm'])) {
@@ -21,7 +31,7 @@ try {
         $userData = $stmtUser->fetch(PDO::FETCH_ASSOC);
 
         if ($userData) {
-            // 2. Vérification du mot de passe (Supporte password_hash et le texte brut pour tes tests[cite: 8])
+            // 2. Vérification du mot de passe
             if (password_verify($password_fourni, $userData['mot_de_passe']) || $password_fourni === $userData['mot_de_passe']) {
                 
                 // --- A. SUPPRESSION DES FICHIERS PHYSIQUES (Photos) ---
@@ -41,27 +51,22 @@ try {
                     $fichiers_a_supprimer[] = $row['PHOTO_CHEMIN'];
                 }
 
-                // Exécuter la suppression des fichiers
                 foreach ($fichiers_a_supprimer as $fichier) {
                     if (file_exists($fichier)) {
                         unlink($fichier);
                     }
                 }
 
-                // --- B. SUPPRESSION EN BASE DE DONNÉES (Ordre important pour les clés étrangères) ---
-                
-                // 1. Supprimer les prises (liées aux sessions de l'utilisateur)
+                // --- B. SUPPRESSION EN BASE DE DONNÉES ---
                 $pdo->prepare("DELETE FROM PRISE WHERE ID_SESSION IN (SELECT ID_SESSION FROM SESSION_P WHERE ID_UTILISATEUR = ?)")->execute([$id_user]);
-                
-                // 2. Supprimer les sessions
                 $pdo->prepare("DELETE FROM SESSION_P WHERE ID_UTILISATEUR = ?")->execute([$id_user]);
-                
-                // 3. Supprimer le matériel et les spots
                 $pdo->prepare("DELETE FROM LEURRE WHERE ID_UTILISATEUR = ?")->execute([$id_user]);
                 $pdo->prepare("DELETE FROM APPAT WHERE ID_UTILISATEUR = ?")->execute([$id_user]);
                 $pdo->prepare("DELETE FROM SPOT WHERE ID_UTILISATEUR = ?")->execute([$id_user]);
                 
-                // 4. Supprimer l'utilisateur
+                // Suppression de la table ADMIN s'il en faisait partie
+                $pdo->prepare("DELETE FROM ADMIN WHERE ID_UTILISATEUR = ?")->execute([$id_user]);
+                
                 $pdo->prepare("DELETE FROM UTILISATEUR WHERE ID_UTILISATEUR = ?")->execute([$id_user]);
 
                 // --- C. DÉCONNEXION ET REDIRECTION ---
@@ -122,8 +127,25 @@ try {
                     </div>
                 <?php endif; ?>
 
+                <!-- Section : Administration (Visible uniquement pour les Admins) -->
+                <?php if($is_admin): ?>
+                    <h6 class="fw-bold text-danger text-uppercase mb-3 ms-2 mt-2" style="font-size: 0.8rem;">Administration</h6>
+                    
+                    <a href="admin.php" class="text-decoration-none">
+                        <div class="card border-0 shadow-sm rounded-4 mb-4 bg-white settings-card p-3 d-flex flex-row align-items-center justify-content-between border-start border-danger border-4">
+                            <div class="d-flex align-items-center">
+                                <div class="bg-danger bg-opacity-10 text-danger rounded-circle d-flex align-items-center justify-content-center me-3" style="width: 45px; height: 45px;">
+                                    <span class="material-symbols-rounded">admin_panel_settings</span>
+                                </div>
+                                <span class="text-danger fw-bold">Espace Administrateur</span>
+                            </div>
+                            <span class="material-symbols-rounded text-muted">chevron_right</span>
+                        </div>
+                    </a>
+                <?php endif; ?>
+
                 <!-- Section : Légal et Informations -->
-                <h6 class="fw-bold text-secondary text-uppercase mb-3 ms-2 mt-2" style="font-size: 0.8rem;">Informations</h6>
+                <h6 class="fw-bold text-secondary text-uppercase mb-3 ms-2 <?= $is_admin ? 'mt-4' : 'mt-2' ?>" style="font-size: 0.8rem;">Informations</h6>
                 
                 <a href="mentions_legales.php" class="text-decoration-none">
                     <div class="card border-0 shadow-sm rounded-4 mb-4 bg-white settings-card p-3 d-flex flex-row align-items-center justify-content-between">
