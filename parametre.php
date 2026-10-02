@@ -89,6 +89,7 @@ try {
     
     <?php include './includes/head.php'; ?>
 
+    <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:opsz,wght,FILL,GRAD@20..48,100..700,0..1,-50..200&icon_names=mail" />
     <style>
         .settings-card {
             transition: transform 0.2s ease, box-shadow 0.2s ease;
@@ -143,6 +144,18 @@ try {
                                 <span class="material-symbols-rounded">policy</span>
                             </div>
                             <span class="text-dark fw-bold">Conditions Générales d'Utilisation</span>
+                        </div>
+                        <span class="material-symbols-rounded text-muted">chevron_right</span>
+                    </div>
+                </a>
+
+                <a href="contact.php" class="text-decoration-none">
+                    <div class="card border-0 shadow-sm rounded-4 mb-4 bg-white settings-card p-3 d-flex flex-row align-items-center justify-content-between">
+                        <div class="d-flex align-items-center">
+                            <div class="bg-primary bg-opacity-10 text-primary rounded-circle d-flex align-items-center justify-content-center me-3" style="width: 45px; height: 45px;">
+                                <span class="material-symbols-outlined">mail</span>
+                            </div>
+                            <span class="text-dark fw-bold">Nous Contacter</span>
                         </div>
                         <span class="material-symbols-rounded text-muted">chevron_right</span>
                     </div>
