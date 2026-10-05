@@ -64,6 +64,7 @@ session_start();
                 <li><strong>Cartographie :</strong> Les fonds de carte sont fournis par <em>© OpenStreetMap contributors</em> et affichés via la bibliothèque <em>Leaflet.js</em>.</li>
                 <li><strong>Météorologie :</strong> Les données météorologiques sont générées en temps réel et en archive par l'API gratuite <em>Open-Meteo</em>.</li>
                 <li><strong>Codex :</strong> Les descriptions scientifiques des espèces de poissons proviennent de l'encyclopédie libre <em>Wikipedia / Wikimedia Commons</em>.</li>
+                <li><strong>Marées :</strong> Données de marée fournies par <a href="https://api-maree.fr/" target="_blank">api-maree.fr</a> sous licence <a href="https://creativecommons.org/licenses/by/4.0/deed.fr" target="_blank">CC BY</a>, calculées à partir de composantes harmoniques <a href="https://sextant.ifremer.fr/geonetwork/srv/api/records/1bc4a49d-d4cd-469e-827c-bd3bd0eeabba/formatters/xsl-view" target="_blank">Ifremer / PREVIMER</a>, elles-mêmes sous licence <a href="https://creativecommons.org/licenses/by/4.0/deed.fr" target="_blank">CC BY</a>.</li>
             </ul>
         </div>
 

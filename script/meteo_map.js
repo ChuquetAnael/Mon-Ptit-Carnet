@@ -23,6 +23,19 @@ function getWindDirectionStr(degree) {
     return '';
 }
 
+// Fonction utilitaire pour tout rafraîchir d'un coup (Météo + Marée)
+function refreshAllConditions(lat, lng) {
+    fetchWeather(lat, lng);
+    
+    let toggleMaree = document.getElementById('toggle-maree');
+    let datetimeStr = document.querySelector('input[name="date_debut"]').value;
+    
+    if (toggleMaree && toggleMaree.checked && datetimeStr) {
+        let dateYMD = datetimeStr.split('T')[0];
+        fetchTide(lat, lng, dateYMD);
+    }
+}
+
 // LE CŒUR DU SYSTÈME : La récupération météo historique
 function fetchWeather(lat, lng) {
     let latInput = document.getElementById('input_lat');
@@ -30,22 +43,12 @@ function fetchWeather(lat, lng) {
     latInput.value = lat.toFixed(6); 
     lngInput.value = lng.toFixed(6);
 
-    // 1. On lit la date exacte renseignée dans le formulaire
     let datetimeStr = document.querySelector('input[name="date_debut"]').value;
-    if(!datetimeStr) return; // Sécurité si le champ est vide
+    if(!datetimeStr) return;
 
-    // Formatage pour l'API : YYYY-MM-DD
     let dateYMD = datetimeStr.split('T')[0];
-    // Formatage de l'heure cible pour la recherche : YYYY-MM-DDTHH:00
     let targetHour = datetimeStr.substring(0, 13) + ":00"; 
     
-    // On lance l'analyse de la marée uniquement si l'interrupteur est déjà coché
-    let toggleMaree = document.getElementById('toggle-maree');
-    if (toggleMaree && toggleMaree.checked) {
-        fetchTide(lat, lng, dateYMD, targetHour);
-    }
-
-    // 2. On détermine si on a besoin des archives (si la date a plus de 5 jours)
     let sessionDate = new Date(datetimeStr);
     let today = new Date();
     let diffDays = (today - sessionDate) / (1000 * 60 * 60 * 24);
@@ -54,16 +57,14 @@ function fetchWeather(lat, lng) {
         ? "https://archive-api.open-meteo.com/v1/archive" 
         : "https://api.open-meteo.com/v1/forecast";
 
-    // 3. Appel de l'API avec les bonnes dates et heures
     let url = `${baseUrl}?latitude=${lat}&longitude=${lng}&start_date=${dateYMD}&end_date=${dateYMD}&hourly=temperature_2m,surface_pressure,wind_speed_10m,wind_direction_10m,weathercode`;
 
     fetch(url)
     .then(response => response.json())
     .then(data => {
         if(data.hourly && data.hourly.time) {
-            // On cherche l'index qui correspond exactement à l'heure de la session
             let idx = data.hourly.time.findIndex(t => t.startsWith(targetHour));
-            if(idx === -1) idx = 12; // Si l'heure exacte n'est pas trouvée, on prend midi par défaut
+            if(idx === -1) idx = 12;
 
             let code = data.hourly.weathercode[idx];
             let dir = data.hourly.wind_direction_10m[idx];
@@ -71,12 +72,9 @@ function fetchWeather(lat, lng) {
             let skyText = getWeatherCodeStr(code);
             let windDirText = getWindDirectionStr(dir);
 
-            // Affichage de la carte
             document.getElementById('weather-card').style.display = 'block';
-            
             document.getElementById('ui_ciel').innerText = skyText;
             document.getElementById('input_ciel').value = skyText;
-
             document.getElementById('ui_temp').innerText = data.hourly.temperature_2m[idx];
             document.getElementById('ui_press').innerText = data.hourly.surface_pressure[idx];
             document.getElementById('ui_wind').innerText = data.hourly.wind_speed_10m[idx];
@@ -90,10 +88,98 @@ function fetchWeather(lat, lng) {
     }).catch(error => console.log("Erreur météo historique:", error));
 }
 
+// LE NOUVEAU CŒUR MARITIME : Connecté au Proxy api-maree.fr
+function fetchTide(lat, lng, dateYMD) {
+    let url = `fetch_maree.php?lat=${lat}&lng=${lng}`;
+
+    fetch(url)
+    .then(response => response.json())
+    .then(data => {
+        if (data.error) {
+            console.log("Erreur Proxy Marée:", data.error);
+            return;
+        }
+
+        let coef = "";
+        let currentState = "N/A";
+        
+        let extremaList = [];
+        if (data.data && Array.isArray(data.data) && data.data.length > 0 && data.data[0].extrema) {
+            extremaList = data.data[0].extrema;
+        } else if (data.extrema) {
+            extremaList = data.extrema;
+        }
+
+        let exactExtrema = [];
+
+        if (Array.isArray(extremaList)) {
+            extremaList.forEach(pmbm => {
+                // 1. Extraction du Coefficient maximum
+                let cRaw = pmbm.coef || pmbm.coeff;
+                if (cRaw !== undefined && cRaw !== null) {
+                    let parsedCoef = parseInt(cRaw);
+                    if (parsedCoef > 0 && (coef === "" || parsedCoef > parseInt(coef))) {
+                        coef = parsedCoef; 
+                    }
+                }
+
+                // 2. Extraction des Heures pour l'état de la marée
+                let timeStr = pmbm.time || "";
+                let timeMatch = String(pmbm.datetime || pmbm.time || pmbm.heure || "").match(/([0-2]\d:[0-5]\d)/);
+                if (timeMatch) timeStr = timeMatch[1];
+
+                if (timeStr) {
+                    let parts = timeStr.split(':');
+                    let timeDec = parseInt(parts[0]) + parseInt(parts[1]) / 60;
+                    let typeRaw = String(pmbm.type || "").toUpperCase();
+                    let isPM = (typeRaw === 'PM' || typeRaw === 'HIGH' || typeRaw === 'PLEINE_MER');
+                    exactExtrema.push({ t: timeDec, isPM: isPM });
+                }
+            });
+        }
+
+        // Remplissage HTML du Champ Coefficient
+        let inputCoef = document.querySelector('input[name="coeff_maree"]');
+        if (inputCoef && coef !== "") inputCoef.value = coef;
+
+        // 3. Calcul de l'état (Montante/Descendante)
+        let datetimeStr = document.querySelector('input[name="date_debut"]').value;
+        let targetDate = new Date(datetimeStr);
+        let targetTimeDec = targetDate.getHours() + targetDate.getMinutes() / 60;
+
+        exactExtrema.sort((a, b) => a.t - b.t);
+
+        if (exactExtrema.length > 0) {
+            if (targetTimeDec <= exactExtrema[0].t) {
+                currentState = exactExtrema[0].isPM ? "Montante" : "Descendante";
+                if (exactExtrema[0].t - targetTimeDec < 0.75) currentState = exactExtrema[0].isPM ? "Haute" : "Basse";
+            } 
+            else if (targetTimeDec >= exactExtrema[exactExtrema.length - 1].t) {
+                currentState = exactExtrema[exactExtrema.length - 1].isPM ? "Descendante" : "Montante";
+                if (targetTimeDec - exactExtrema[exactExtrema.length - 1].t < 0.75) currentState = exactExtrema[exactExtrema.length - 1].isPM ? "Haute" : "Basse";
+            } 
+            else {
+                for (let i = 0; i < exactExtrema.length - 1; i++) {
+                    if (targetTimeDec >= exactExtrema[i].t && targetTimeDec <= exactExtrema[i+1].t) {
+                        currentState = exactExtrema[i].isPM ? "Descendante" : "Montante";
+                        if (targetTimeDec - exactExtrema[i].t < 0.75) currentState = exactExtrema[i].isPM ? "Haute" : "Basse";
+                        else if (exactExtrema[i+1].t - targetTimeDec < 0.75) currentState = exactExtrema[i+1].isPM ? "Haute" : "Basse";
+                        break;
+                    }
+                }
+            }
+        }
+
+        // Remplissage HTML du Champ État Marée
+        let selectMaree = document.querySelector('select[name="desc_maree"]');
+        if (selectMaree && currentState !== "N/A") selectMaree.value = currentState;
+
+    }).catch(error => console.log("Erreur Proxy Marée:", error));
+}
 
 
 // ==========================================
-// INITIALISATION DE LA CARTE
+// INITIALISATION DE LA CARTE ET ÉVÉNEMENTS
 // ==========================================
 document.addEventListener("DOMContentLoaded", function() {
     let latInput = document.getElementById('input_lat');
@@ -108,51 +194,53 @@ document.addEventListener("DOMContentLoaded", function() {
 
     let marker = null;
 
-    // Placement initial du marqueur si EXIF
     if (!isNaN(initLat) && initLat !== 0) {
         marker = L.marker([initLat, initLng], {draggable: true}).addTo(map);
-        fetchWeather(initLat, initLng);
-        marker.on('dragend', function() { fetchWeather(marker.getLatLng().lat, marker.getLatLng().lng); });
+        refreshAllConditions(initLat, initLng);
+        
+        marker.on('dragend', function() {
+            refreshAllConditions(marker.getLatLng().lat, marker.getLatLng().lng);
+        });
     }
 
-    // Déplacement au clic
     map.on('click', function(e) {
-        if (marker) marker.setLatLng(e.latlng);
-        else {
+        if (marker) {
+            marker.setLatLng(e.latlng);
+        } else {
             marker = L.marker(e.latlng, {draggable: true}).addTo(map);
-            marker.on('dragend', function() { fetchWeather(marker.getLatLng().lat, marker.getLatLng().lng); });
+            marker.on('dragend', function() { 
+                refreshAllConditions(marker.getLatLng().lat, marker.getLatLng().lng); 
+            });
         }
-        fetchWeather(e.latlng.lat, e.latlng.lng);
+        refreshAllConditions(e.latlng.lat, e.latlng.lng);
     });
 
-    // NOUVEAUTÉ : Si on modifie la date/heure à la main, on recharge la météo !
+    // Actualisation Météo + Marée en cas de changement d'heure
     document.querySelector('input[name="date_debut"]').addEventListener('change', function() {
         let currentLat = parseFloat(latInput.value);
         let currentLng = parseFloat(lngInput.value);
         if(!isNaN(currentLat) && currentLat !== 0) {
-            fetchWeather(currentLat, currentLng);
+            refreshAllConditions(currentLat, currentLng);
         }
     });
 
+    // Appel API lors de l'activation de l'interrupteur Mer
     let toggleMaree = document.getElementById('toggle-maree');
     if (toggleMaree) {
         toggleMaree.addEventListener('change', function() {
             if (this.checked) {
-                let lat = parseFloat(document.getElementById('input_lat').value);
-                let lng = parseFloat(document.getElementById('input_lng').value);
+                let lat = parseFloat(latInput.value);
+                let lng = parseFloat(lngInput.value);
                 let datetimeStr = document.querySelector('input[name="date_debut"]').value;
-                
                 if(!isNaN(lat) && datetimeStr) {
                     let dateYMD = datetimeStr.split('T')[0];
-                    let targetHour = datetimeStr.substring(0, 13) + ":00";
-                    fetchTide(lat, lng, dateYMD, targetHour);
+                    fetchTide(lat, lng, dateYMD);
                 }
             }
         });
     }
 });
 
-// Les autres fonctions de base pour toggle l'interface (ne change pas)
 function toggleNewSpot() {
     const select = document.getElementById('spot-select');
     const panel = document.getElementById('new-spot-panel');
@@ -174,43 +262,4 @@ function toggleCapotBtn() {
         btn.classList.remove('btn-secondary');
         btn.classList.add('btn-primary', 'custom-btn-submit');
     }
-}
-
-function fetchTide(lat, lng, dateYMD, targetHour) {
-    // Appel de l'API Marine gratuite d'Open-Meteo (sans clé)
-    let url = `https://marine-api.open-meteo.com/v1/marine?latitude=${lat}&longitude=${lng}&start_date=${dateYMD}&end_date=${dateYMD}&hourly=sea_level_height_msl`;
-
-    fetch(url)
-    .then(response => response.json())
-    .then(data => {
-        if(data.hourly && data.hourly.time) {
-            let idx = data.hourly.time.findIndex(t => t.startsWith(targetHour));
-            
-            // Sécurité pour pouvoir comparer avec l'heure précédente et suivante
-            if(idx > 0 && idx < data.hourly.time.length - 1) {
-                let current = data.hourly.sea_level_height_msl[idx];
-                let prev = data.hourly.sea_level_height_msl[idx - 1];
-                let next = data.hourly.sea_level_height_msl[idx + 1];
-
-                let state = "N/A";
-                
-                // Déduction logique de la courbe de la marée
-                if (current > prev && current > next) {
-                    state = "Haute";
-                } else if (current < prev && current < next) {
-                    state = "Basse";
-                } else if (next > current) {
-                    state = "Montante";
-                } else if (next < current) {
-                    state = "Descendante";
-                }
-
-                // Mise à jour automatique de la liste déroulante
-                let selectMaree = document.querySelector('select[name="desc_maree"]');
-                if(selectMaree && state !== "N/A") {
-                    selectMaree.value = state;
-                }
-            }
-        }
-    }).catch(error => console.log("Erreur API Marine:", error));
 }
