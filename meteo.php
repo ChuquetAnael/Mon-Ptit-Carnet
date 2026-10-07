@@ -55,7 +55,7 @@ try {
             <span class="material-symbols-rounded fs-2">arrow_back_ios_new</span>
         </a>
         <h1 class="h4 mb-0 fw-semibold d-flex align-items-center justify-content-center">
-            <span class="material-symbols-rounded me-2">partly_cloudy_day</span> Météo & Marées
+            <span class="material-symbols-rounded me-2">partly_cloudy_day</span> Conditions de peche
         </h1>
     </header>
 
@@ -126,10 +126,13 @@ try {
             <!-- TOGGLE SWITCH (Météo 7J vs Marée) -->
             <div class="bg-white rounded-pill shadow-sm border p-1 mb-4 d-flex mx-auto segmented-control" style="max-width: 350px;">
                 <input type="radio" class="btn-check" name="viewToggle" id="btn-meteo" value="meteo" autocomplete="off" checked>
-                <label class="btn rounded-pill flex-fill fw-bold border-0 text-muted" for="btn-meteo">Météo (7J)</label>
+                <label class="btn rounded-pill flex-fill fw-bold border-0 text-muted" for="btn-meteo">Météo</label>
 
                 <input type="radio" class="btn-check" name="viewToggle" id="btn-maree" value="maree" autocomplete="off">
-                <label class="btn rounded-pill flex-fill fw-bold border-0 text-muted" for="btn-maree">Marée (Jour)</label>
+                <label class="btn rounded-pill flex-fill fw-bold border-0 text-muted" for="btn-maree">Marée</label>
+
+                <input type="radio" class="btn-check" name="viewToggle" id="btn-riviere" value="riviere" autocomplete="off">
+                <label class="btn rounded-pill flex-fill fw-bold border-0 text-muted" for="btn-riviere">Rivière</label>
             </div>
 
             <!-- SECTION 1 : PRÉVISIONS 7 JOURS -->
@@ -146,6 +149,13 @@ try {
             <div id="section-maree" style="display: none;">
                 <div id="tide-container">
                     <!-- Les données et graphiques de marée injectées par JS -->
+                </div>
+            </div>
+
+            <!-- SECTION 3 : ÉCOULEMENT RIVIÈRE (NOUVEAU) -->
+            <div id="section-riviere" style="display: none;">
+                <div id="river-container">
+                    <!-- Les données de crue/décrue seront injectées ici -->
                 </div>
             </div>
 

@@ -1,4 +1,6 @@
 let tideChartInstance = null;
+let riverChartInstance = null;
+let riverAbortController = null;
 
 document.addEventListener('DOMContentLoaded', function() {
     const selector = document.getElementById('locationSelector');
@@ -9,19 +11,16 @@ document.addEventListener('DOMContentLoaded', function() {
 
     document.querySelectorAll('input[name="viewToggle"]').forEach(radio => {
         radio.addEventListener('change', function() {
-            if(this.value === 'meteo') {
-                document.getElementById('section-meteo').style.display = 'block';
-                document.getElementById('section-maree').style.display = 'none';
-            } else {
-                document.getElementById('section-meteo').style.display = 'none';
-                document.getElementById('section-maree').style.display = 'block';
-            }
+            document.getElementById('section-meteo').style.display = (this.value === 'meteo') ? 'block' : 'none';
+            document.getElementById('section-maree').style.display = (this.value === 'maree') ? 'block' : 'none';
+            document.getElementById('section-riviere').style.display = (this.value === 'riviere') ? 'block' : 'none';
         });
     });
 
-    function getWeatherDetails(code) {
-        if(code === 0) return { text: 'Soleil', icon: 'clear_day', color: 'text-warning' };
-        if(code > 0 && code <= 3) return { text: 'Nuageux', icon: 'partly_cloudy_day', color: 'text-secondary' };
+    // LA NOUVELLE FONCTION METEO QUI GÈRE LA NUIT !
+    function getWeatherDetails(code, isNight = false) {
+        if(code === 0) return { text: isNight ? 'Nuit claire' : 'Soleil', icon: isNight ? 'clear_night' : 'clear_day', color: isNight ? 'text-primary' : 'text-warning' };
+        if(code > 0 && code <= 3) return { text: 'Nuageux', icon: isNight ? 'partly_cloudy_night' : 'partly_cloudy_day', color: 'text-secondary' };
         if(code === 45 || code === 48) return { text: 'Brouillard', icon: 'foggy', color: 'text-secondary' };
         if(code >= 51 && code <= 67) return { text: 'Pluie', icon: 'rainy', color: 'text-info' };
         if(code >= 71 && code <= 77) return { text: 'Neige', icon: 'weather_snowy', color: 'text-info' };
@@ -43,14 +42,119 @@ document.addEventListener('DOMContentLoaded', function() {
         return date.toLocaleDateString('fr-FR', { weekday: 'long' }).charAt(0).toUpperCase() + date.toLocaleDateString('fr-FR', { weekday: 'long' }).slice(1);
     }
 
+    let currentRiverFetchId = 0;
+
+    function fetchRiverData(lat, lng) {
+        const riverContainer = document.getElementById('river-container');
+        riverContainer.innerHTML = '<div class="text-center py-5"><div class="spinner-border text-info"></div><p class="text-muted mt-2">Calcul des moyennes mensuelles du bassin...</p></div>';
+
+        if (riverAbortController) {
+            riverAbortController.abort();
+        }
+        riverAbortController = new AbortController();
+
+        let fetchId = ++currentRiverFetchId;
+
+        fetch(`fetch_riviere.php?lat=${lat}&lng=${lng}`, { signal: riverAbortController.signal })
+        .then(res => res.json())
+        .then(data => {
+            if (fetchId !== currentRiverFetchId) return; 
+
+            if (data.error) {
+                riverContainer.innerHTML = `
+                <div class="alert bg-white border-0 shadow-sm text-center rounded-4 p-5 mt-3">
+                    <span class="material-symbols-rounded text-muted mb-3" style="font-size: 60px;">waves</span>
+                    <h5 class="fw-bold text-dark">Information Hydrométrique</h5>
+                    <p class="text-muted mb-0">${data.error}</p>
+                </div>`;
+                return;
+            }
+
+            riverContainer.innerHTML = `
+            <div class="alert alert-info bg-info bg-opacity-10 border-0 rounded-4 mb-4 d-flex align-items-center">
+                <span class="material-symbols-rounded text-info me-3" style="font-size: 28px;">water</span>
+                <div>
+                    <small class="d-block text-muted fw-bold text-uppercase" style="font-size: 0.65rem; letter-spacing: 1px;">Station de mesure</small>
+                    <span class="fw-bold text-info d-block">${data.station_name}</span>
+                    <small class="text-secondary" style="font-size: 0.75rem;">Située à ${data.distance} km</small>
+                </div>
+            </div>
+
+            <div class="row g-3 mb-4">
+                <div class="col-6">
+                    <div class="card border-0 shadow-sm rounded-4 p-3 h-100 text-center bg-white border-bottom border-4 border-info">
+                        <span class="material-symbols-rounded ${data.etat_color} mb-1" style="font-size: 32px;">waves</span>
+                        <h6 class="fw-bold text-dark mb-0" style="font-size: 0.85rem;">${data.mesure_label}</h6>
+                        <span class="text-dark fw-bold fs-5">${data.current_flow} ${data.mesure_unit}</span>
+                        <span class="badge bg-light ${data.etat_color} mt-1 fw-bold text-wrap" style="font-size: 0.7rem; border: 1px solid currentColor;">${data.etat_riviere}</span>
+                    </div>
+                </div>
+                <div class="col-6">
+                    <div class="card border-0 shadow-sm rounded-4 p-3 h-100 text-center bg-white border-bottom border-4 border-${data.trend_color.split('-')[1]}">
+                        <span class="material-symbols-rounded ${data.trend_color} mb-1" style="font-size: 32px;">${data.trend_icon}</span>
+                        <h6 class="fw-bold text-dark mb-0" style="font-size: 0.85rem;">Évolution (24h)</h6>
+                        <span class="${data.trend_color} fw-bold fs-5">${data.trend_text}</span>
+                        <small class="d-block text-muted mt-2" style="font-size: 0.65rem;">Moy. Saison : ${data.avg_month} ${data.mesure_unit}</small>
+                    </div>
+                </div>
+            </div>
+
+            <div class="card border-0 shadow-sm rounded-4 bg-white p-3 mb-4">
+                <h6 class="fw-bold text-secondary text-uppercase mb-3 small"><span class="material-symbols-rounded align-middle me-2 fs-5">show_chart</span> Historique sur 1 Mois</h6>
+                <div style="height: 180px; width: 100%;">
+                    <canvas id="riverChart"></canvas>
+                </div>
+            </div>
+            `;
+
+            if (riverChartInstance) riverChartInstance.destroy();
+            const ctx = document.getElementById('riverChart').getContext('2d');
+            Chart.defaults.font.family = "'Poppins', sans-serif";
+            
+            riverChartInstance = new Chart(ctx, {
+                type: 'line',
+                data: {
+                    labels: data.chart_labels,
+                    datasets: [{
+                        label: `${data.mesure_label} (${data.mesure_unit})`,
+                        data: data.chart_data,
+                        borderColor: '#0dcaf0',
+                        backgroundColor: 'rgba(13, 202, 240, 0.15)',
+                        borderWidth: 3,
+                        fill: true,
+                        tension: 0.3,
+                        pointRadius: 1,
+                        pointHitRadius: 15
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    plugins: { legend: { display: false } },
+                    scales: {
+                        x: { grid: { display: false }, ticks: { maxTicksLimit: 6, color: '#6c757d' } },
+                        y: { display: true, grid: { color: 'rgba(0,0,0,0.05)' } }
+                    }
+                }
+            });
+        })
+        .catch(err => {
+            if (err.name === 'AbortError') return; 
+            console.error(err);
+            riverContainer.innerHTML = '<div class="alert alert-danger rounded-4 m-3">Erreur lors de la récupération de la station.</div>';
+        });
+    }
+
     function fetchConditions(lat, lng, locationName) {
         loader.style.display = 'block';
         content.style.display = 'none';
         forecastContainer.innerHTML = '';
         tideContainer.innerHTML = '';
 
-        // On ne garde que la météo et notre proxy marée (On supprime l'API marine d'Open-Meteo pour éviter les conflits)
-        const urlWeather = `https://api.open-meteo.com/v1/forecast?latitude=${lat}&longitude=${lng}&current=temperature_2m,surface_pressure,wind_speed_10m,wind_direction_10m,weathercode&daily=weathercode,temperature_2m_max,temperature_2m_min,precipitation_sum,wind_speed_10m_max,wind_direction_10m_dominant&hourly=temperature_2m,precipitation,wind_speed_10m,wind_direction_10m,weathercode&timezone=Europe%2FParis`;
+        fetchRiverData(lat, lng);
+
+        // AJOUT DES VARIABLES ASTRONOMIQUES (is_day, sunrise, sunset)
+        const urlWeather = `https://api.open-meteo.com/v1/forecast?latitude=${lat}&longitude=${lng}&current=temperature_2m,surface_pressure,wind_speed_10m,wind_direction_10m,weathercode,is_day&daily=weathercode,temperature_2m_max,temperature_2m_min,precipitation_sum,wind_speed_10m_max,wind_direction_10m_dominant,sunrise,sunset&hourly=temperature_2m,precipitation,wind_speed_10m,wind_direction_10m,weathercode&timezone=Europe%2FParis`;
         const urlMareeFr = `fetch_maree.php?lat=${lat}&lng=${lng}`;
 
         Promise.all([
@@ -63,13 +167,25 @@ document.addEventListener('DOMContentLoaded', function() {
             // 1. TRAITEMENT DE LA MÉTÉO
             // ==========================================
             if(dataWeather.current && dataWeather.daily && dataWeather.hourly) {
-                const currentDetails = getWeatherDetails(dataWeather.current.weathercode);
+                
+                // Météo Actuelle avec détection Nuit/Jour
+                const isCurrentlyDay = dataWeather.current.is_day === 1;
+                const currentDetails = getWeatherDetails(dataWeather.current.weathercode, !isCurrentlyDay);
                 const currentWindDir = getWindDirectionStr(dataWeather.current.wind_direction_10m);
                 
                 document.getElementById('current-city').innerText = locationName;
                 document.getElementById('current-temp').innerText = Math.round(dataWeather.current.temperature_2m);
                 document.getElementById('current-desc').innerText = currentDetails.text;
                 document.getElementById('current-icon').innerText = currentDetails.icon;
+                
+                // On met à jour la couleur de la carte principale s'il fait nuit
+                const mainCard = document.querySelector('.weather-main-card');
+                if (!isCurrentlyDay) {
+                    mainCard.style.background = 'linear-gradient(135deg, #121c2d 0%, #20314b 100%)';
+                } else {
+                    mainCard.style.background = 'linear-gradient(135deg, #1e3c72 0%, #2a5298 100%)';
+                }
+
                 document.getElementById('current-press').innerText = Math.round(dataWeather.current.surface_pressure) + ' hPa';
                 document.getElementById('current-wind').innerText = Math.round(dataWeather.current.wind_speed_10m) + ' km/h ' + (currentWindDir ? `(${currentWindDir})` : '');
 
@@ -86,9 +202,13 @@ document.addEventListener('DOMContentLoaded', function() {
                     let precip = dataWeather.daily.precipitation_sum[i];
                     let windMax = Math.round(dataWeather.daily.wind_speed_10m_max[i]);
                     let windDir = getWindDirectionStr(dataWeather.daily.wind_direction_10m_dominant[i]);
-                    let details = getWeatherDetails(dataWeather.daily.weathercode[i]);
+                    let details = getWeatherDetails(dataWeather.daily.weathercode[i], false); // Journée globale = icône de jour
                     let dayName = getDayName(dayDate, i);
                     let collapseId = `collapseDay${i}`;
+
+                    // Heures astronomiques pour ce jour précis
+                    let sunriseTime = new Date(dataWeather.daily.sunrise[i]).getTime();
+                    let sunsetTime = new Date(dataWeather.daily.sunset[i]).getTime();
 
                     let hourlyHtml = `<div class="d-flex justify-content-between overflow-auto py-3 px-1 timeline-scroll">`;
                     for(let j = 0; j < hTime.length; j++) {
@@ -96,8 +216,12 @@ document.addEventListener('DOMContentLoaded', function() {
                             let hourStr = hTime[j].substring(11, 16);
                             let hourInt = parseInt(hourStr.substring(0,2));
                             
-                            if ([6, 9, 12, 15, 18, 21].includes(hourInt)) {
-                                let hDetails = getWeatherDetails(hCode[j]);
+                            // RESTAURATION : Toutes les 2 heures !
+                            if (hourInt % 2 === 0) {
+                                let hourTimestamp = new Date(hTime[j]).getTime();
+                                let isNightHour = (hourTimestamp < sunriseTime || hourTimestamp > sunsetTime);
+                                let hDetails = getWeatherDetails(hCode[j], isNightHour);
+                                
                                 hourlyHtml += `
                                 <div class="text-center d-flex flex-column align-items-center flex-fill" style="min-width: 50px;">
                                     <span class="text-muted fw-bold mb-1" style="font-size: 0.75rem;">${hourStr}</span>
@@ -157,14 +281,13 @@ document.addEventListener('DOMContentLoaded', function() {
             }
 
             // ==========================================
-            // 2. TRAITEMENT DE LA MARÉE (100% SHOM + INTERPOLATION MATHÉMATIQUE)
+            // 2. TRAITEMENT DE LA MARÉE
             // ==========================================
             let coef = "--";
             let tideEvents = [];
             let portName = "Port Inconnu";
             let distPort = 0;
 
-            // A. Extractions des informations de l'API française
             if (!dataMareeFr.error) {
                 portName = dataMareeFr.port_name_custom || dataMareeFr.site_name || "Port";
                 distPort = dataMareeFr.distance_km || 0;
@@ -208,8 +331,6 @@ document.addEventListener('DOMContentLoaded', function() {
                 }
             }
 
-            // --- SÉCURITÉ POUR LES SPOTS EAUX INTÉRIEURES (Trop loin d'un port) ---
-            // On filtre les lacs et les rivières qui sont loin des côtes (Distance > 10km)
             if (distPort > 10 || tideEvents.length === 0) {
                 let msg = distPort > 10
                     ? `Ce spot est situé à <b>${Math.round(distPort)} km</b> du littoral. Les données de marée ne s'appliquent pas ici.` 
@@ -224,23 +345,20 @@ document.addEventListener('DOMContentLoaded', function() {
                 
                 loader.style.display = 'none';
                 content.style.display = 'block';
-                return; // On arrête là pour la section Marée
+                return;
             }
 
-            // B. INTERPOLATION MATHÉMATIQUE DE LA COURBE
-            // Pour garantir un alignement parfait avec le SHOM, on calcule la courbe nous-mêmes !
             tideEvents.sort((a, b) => a.time.localeCompare(b.time));
 
             let exactExtrema = [];
             tideEvents.forEach(ev => {
                 let p = ev.time.split(':');
                 exactExtrema.push({
-                    t: parseInt(p[0]) + parseInt(p[1]) / 60, // Heure décimale
+                    t: parseInt(p[0]) + parseInt(p[1]) / 60,
                     h: ev.height
                 });
             });
 
-            // On "invente" les points de débordement pour que la courbe touche les bords (00h et 23h59)
             if (exactExtrema.length >= 2) {
                 let diffFirst = exactExtrema[1].t - exactExtrema[0].t;
                 exactExtrema.unshift({ t: exactExtrema[0].t - diffFirst, h: exactExtrema[1].h });
@@ -252,7 +370,6 @@ document.addEventListener('DOMContentLoaded', function() {
             let chartLabels = [];
             let chartData = [];
 
-            // On dessine un point toutes les 15 minutes
             for (let h = 0; h < 24; h++) {
                 for (let m = 0; m < 60; m += 15) {
                     let t = h + m / 60;
@@ -266,7 +383,6 @@ document.addEventListener('DOMContentLoaded', function() {
                     }
 
                     if (e1 && e2) {
-                        // Formule de l'interpolation sinusoïdale (Règle des douzièmes lissée)
                         let progress = (t - e1.t) / (e2.t - e1.t);
                         let val = e1.h + (e2.h - e1.h) * (1 - Math.cos(Math.PI * progress)) / 2;
                         chartLabels.push(timeStr);
@@ -275,7 +391,6 @@ document.addEventListener('DOMContentLoaded', function() {
                 }
             }
 
-            // C. DÉDUCTION DE L'ÉTAT ACTUEL
             let currentState = "Indisponible";
             let now = new Date();
             let nowT = now.getHours() + now.getMinutes() / 60;
@@ -284,7 +399,6 @@ document.addEventListener('DOMContentLoaded', function() {
                 if (nowT >= exactExtrema[i].t && nowT <= exactExtrema[i+1].t) {
                     currentState = exactExtrema[i].h < exactExtrema[i+1].h ? "Marée Montante" : "Marée Descendante";
 
-                    // À moins de 45 min du pic
                     if (nowT - exactExtrema[i].t < 0.75) {
                         currentState = exactExtrema[i].h > exactExtrema[i+1].h ? "Haute (Pleine Mer)" : "Basse Mer";
                     } else if (exactExtrema[i+1].t - nowT < 0.75) {
@@ -294,7 +408,6 @@ document.addEventListener('DOMContentLoaded', function() {
                 }
             }
 
-            // D. INJECTION HTML DE LA MARÉE
             let tideHtml = `
             <div class="alert alert-primary bg-primary bg-opacity-10 border-0 rounded-4 mb-4 d-flex align-items-center">
                 <span class="material-symbols-rounded text-primary me-3" style="font-size: 28px;">anchor</span>
@@ -353,7 +466,6 @@ document.addEventListener('DOMContentLoaded', function() {
             tideHtml += `</ul></div>`;
             tideContainer.innerHTML = tideHtml;
 
-            // Dessin de la courbe fluide mathématique
             if (chartData.length > 0) {
                 if (tideChartInstance) tideChartInstance.destroy();
                 
@@ -383,10 +495,7 @@ document.addEventListener('DOMContentLoaded', function() {
                         scales: {
                             x: { 
                                 grid: { display: false }, 
-                                ticks: { 
-                                    maxTicksLimit: 6, // Empêche l'entassement des 96 points générés (15min * 24)
-                                    color: '#6c757d' 
-                                } 
+                                ticks: { maxTicksLimit: 6, color: '#6c757d' } 
                             },
                             y: { 
                                 display: false, 
@@ -398,18 +507,16 @@ document.addEventListener('DOMContentLoaded', function() {
                 });
             }
 
-            // Affichage final global
             loader.style.display = 'none';
             content.style.display = 'block';
 
         })
         .catch(error => {
             console.log(error);
-            loader.innerHTML = '<div class="alert alert-danger rounded-4 m-3">Erreur lors de la récupération des données. Vérifiez votre connexion.</div>';
+            loader.innerHTML = '<div class="alert alert-danger rounded-4 m-3">Erreur lors de la récupération des données météo. Vérifiez votre connexion.</div>';
         });
     }
 
-    // Géolocalisation par défaut
     function loadCurrentGPS() {
         loader.style.display = 'block';
         content.style.display = 'none';
@@ -425,19 +532,17 @@ document.addEventListener('DOMContentLoaded', function() {
         }
     }
 
-    // Changement de lieu via le menu déroulant
     selector.addEventListener('change', function() {
         if (this.value === 'gps') {
             loadCurrentGPS();
         } else {
             const selectedOption = this.options[this.selectedIndex];
-            const lat = selectedOption.getAttribute('data-lat');
-            const lng = selectedOption.getAttribute('data-lng');
+            const lat = parseFloat(selectedOption.getAttribute('data-lat'));
+            const lng = parseFloat(selectedOption.getAttribute('data-lng'));
             const nom = selectedOption.text.replace('🎣 ', '').trim();
             fetchConditions(lat, lng, nom);
         }
     });
 
-    // Init
     loadCurrentGPS();
 });

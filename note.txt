@@ -5,7 +5,7 @@ BDD :
     espece maquante : coquette,Merlan,cernier
 
 Ajout session :
-    //voir si je peut mettre une api pour recup la marre (marre.info)
+
 
 Coté reseau sociale : 
     Pouvoir épinglé des sessions sur son profil
