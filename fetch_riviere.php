@@ -8,12 +8,13 @@ $lng_raw = isset($_GET['lng']) ? str_replace(',', '.', $_GET['lng']) : '0';
 $lat_user = number_format(floatval($lat_raw), 6, '.', '');
 $lng_user = number_format(floatval($lng_raw), 6, '.', '');
 
-function fetchHubeau($url) {
+function fetchHubeau($url, $timeout = 10) {
     $options = [
         "http" => [
             "method" => "GET",
-            "header" => "User-Agent: MonCarnetDePeche/2.0\r\nAccept: application/json\r\nAccept-Encoding: gzip\r\n",
-            "timeout" => 8
+            // L'ajout de "Connection: close" est VITAL pour empêcher le serveur Hub'eau de faire planter XAMPP
+            "header" => "User-Agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36\r\nAccept: application/json\r\nAccept-Encoding: gzip\r\nConnection: close\r\n",
+            "timeout" => $timeout
         ],
         "ssl" => [
             "verify_peer" => false,
@@ -40,12 +41,12 @@ function distanceKm($lat1, $lon1, $lat2, $lon2) {
 }
 
 try {
-    // ÉTAPE 1 : Chercher les stations proches
-    $urlStations = "https://hubeau.eaufrance.fr/api/v2/hydrometrie/referentiel/stations?latitude={$lat_user}&longitude={$lng_user}&distance=25&size=20&en_service=true";
-    $dataStations = fetchHubeau($urlStations);
+    // ÉTAPE 1 : Chercher les stations proches (On repasse à 30 km et on laisse 15 secondes au serveur)
+    $urlStations = "https://hubeau.eaufrance.fr/api/v2/hydrometrie/referentiel/stations?latitude={$lat_user}&longitude={$lng_user}&distance=30&size=20&en_service=true";
+    $dataStations = fetchHubeau($urlStations, 15);
 
     if (!$dataStations || empty($dataStations['data'])) {
-        echo json_encode(['error' => "Aucune station hydrométrique à moins de 25 km."]);
+        echo json_encode(['error' => "Aucune station hydrométrique en service trouvée à moins de 30 km. (Vérifiez votre connexion ou réessayez)"]);
         exit;
     }
 
@@ -60,23 +61,10 @@ try {
         return $a['distance_calculee'] <=> $b['distance_calculee'];
     });
 
-    // On garde uniquement les 5 plus proches pour le "Tir groupé"
+    // Tir groupé sur les 5 plus proches
     $topStations = array_slice($stations, 0, 5);
     $codes = array_column($topStations, 'code_station');
     $codesStr = implode(',', $codes);
-
-    // ÉTAPE 2 : Le Tir Groupé (Rapide)
-    $urlTr = "https://hubeau.eaufrance.fr/api/v2/hydrometrie/observations_tr?code_entite={$codesStr}&size=1000&sort=desc";
-    $dataTr = fetchHubeau($urlTr);
-    
-    $obsByStation = [];
-    if ($dataTr && !empty($dataTr['data'])) {
-        foreach ($dataTr['data'] as $o) {
-            $c = $o['code_station'];
-            if (!isset($obsByStation[$c])) $obsByStation[$c] = [];
-            $obsByStation[$c][] = $o;
-        }
-    }
 
     $validStation = null;
     $obsTr = [];
@@ -85,40 +73,74 @@ try {
     $unite = 'm³/s';
     $grandeurElab = 'QmJ';
 
-    foreach ($topStations as $station) {
-        $c = $station['code_station'];
-        if (isset($obsByStation[$c]) && count($obsByStation[$c]) > 0) {
-            $validStation = $station;
-            $obsTr = $obsByStation[$c];
-            
-            $typeMesure = $obsTr[0]['grandeur_hydro'] ?? 'Q';
-            if ($typeMesure === 'H') {
-                $grandeurElab = 'HmJ';
-                $labelMesure = "Hauteur d'eau";
-                $unite = 'm';
+    // ÉTAPE 2 : PLAN A - On force la recherche stricte sur le DÉBIT (Q)
+    $urlTrQ = "https://hubeau.eaufrance.fr/api/v2/hydrometrie/observations_tr?code_entite={$codesStr}&grandeur_hydro=Q&size=1500&sort=desc";
+    $dataTrQ = fetchHubeau($urlTrQ, 8);
+    
+    if ($dataTrQ && !empty($dataTrQ['data'])) {
+        $obsByStation = [];
+        foreach ($dataTrQ['data'] as $o) {
+            $c = $o['code_station'];
+            if (!isset($obsByStation[$c])) $obsByStation[$c] = [];
+            $obsByStation[$c][] = $o;
+        }
+        
+        foreach ($topStations as $station) {
+            $c = $station['code_station'];
+            if (isset($obsByStation[$c]) && count($obsByStation[$c]) > 0) {
+                $validStation = $station;
+                $obsTr = $obsByStation[$c];
+                break; 
             }
-            break; 
+        }
+    }
+
+    // ÉTAPE 3 : PLAN B - Si vraiment aucun débit, on se rabat sur la HAUTEUR (H)
+    if (!$validStation) {
+        $urlTrH = "https://hubeau.eaufrance.fr/api/v2/hydrometrie/observations_tr?code_entite={$codesStr}&grandeur_hydro=H&size=1500&sort=desc";
+        $dataTrH = fetchHubeau($urlTrH, 8);
+
+        if ($dataTrH && !empty($dataTrH['data'])) {
+            $obsByStation = [];
+            foreach ($dataTrH['data'] as $o) {
+                $c = $o['code_station'];
+                if (!isset($obsByStation[$c])) $obsByStation[$c] = [];
+                $obsByStation[$c][] = $o;
+            }
+            
+            foreach ($topStations as $station) {
+                $c = $station['code_station'];
+                if (isset($obsByStation[$c]) && count($obsByStation[$c]) > 0) {
+                    $validStation = $station;
+                    $obsTr = $obsByStation[$c];
+                    $typeMesure = 'H';
+                    $grandeurElab = 'HmJ';
+                    $labelMesure = "Hauteur d'eau";
+                    $unite = 'm';
+                    break; 
+                }
+            }
         }
     }
 
     if (!$validStation || empty($obsTr)) {
-        echo json_encode(['error' => "Les stations proches sont en maintenance et ne transmettent aucune donnée."]);
+        echo json_encode(['error' => "Les stations proches sont en maintenance et ne transmettent aucune donnée actuellement."]);
         exit;
     }
 
     $currentValue = $obsTr[0]['resultat_obs'] / 1000; 
 
-    // ÉTAPE 3 : Statistiques du mois
+    // ÉTAPE 4 : Statistiques (Élaborées)
     $code = $validStation['code_station'];
     $urlElab = "https://hubeau.eaufrance.fr/api/v2/hydrometrie/observations_elaborees?code_entite={$code}&grandeur_hydro_elab={$grandeurElab}&size=30&sort=desc";
-    $dataElab = fetchHubeau($urlElab);
+    
+    $dataElab = fetchHubeau($urlElab, 5);
 
     $chartLabels = [];
     $chartData = [];
     $sum = 0; $count = 0;
 
     if ($dataElab && isset($dataElab['data']) && count($dataElab['data']) > 0) {
-        // PLAN A : L'API Statistique fonctionne, on récupère le mois complet instantanément
         foreach ($dataElab['data'] as $o) {
             $val = ($o['resultat_obs_elab'] ?? 0) / 1000;
             $sum += $val;
@@ -130,41 +152,25 @@ try {
         array_push($chartLabels, "Actuel");
         array_push($chartData, number_format($currentValue, 2, '.', ''));
     } else {
-        // PLAN B (LE CORRECTIF) : L'API Statistique est vide pour cette station !
-        // On télécharge spécifiquement 4500 relevés en temps réel (1 mois complet) pour la dessiner nous-mêmes.
-        $urlFullTr = "https://hubeau.eaufrance.fr/api/v2/hydrometrie/observations_tr?code_entite={$code}&grandeur_hydro={$typeMesure}&size=4500&sort=desc";
-        $dataFullTr = fetchHubeau($urlFullTr);
+        // Si l'API élaborée est vide, on télécharge un historique raisonnable (1000 relevés = ~5 jours)
+        // Cela empêche l'API de crasher, tout en gardant une belle courbe dans ton interface !
+        $urlFullTr = "https://hubeau.eaufrance.fr/api/v2/hydrometrie/observations_tr?code_entite={$code}&grandeur_hydro={$typeMesure}&size=1000&sort=desc";
+        $dataFullTr = fetchHubeau($urlFullTr, 6);
         
-        if ($dataFullTr && isset($dataFullTr['data'])) {
-            $lastDay = "";
-            foreach ($dataFullTr['data'] as $o) {
-                $val = $o['resultat_obs'] / 1000;
-                $sum += $val;
-                $count++;
-                
-                $timestamp = strtotime($o['date_obs']);
-                $day = date('d/m', $timestamp);
-                
-                // On garde 1 seul point de repère par jour pour faire 30 jours au lieu de 24h !
-                if ($day != $lastDay) {
-                    array_unshift($chartLabels, $day);
-                    array_unshift($chartData, number_format($val, 2, '.', ''));
-                    $lastDay = $day;
-                }
-            }
-        } else {
-            // Sécurité absolue en cas de crash complet (ne devrait jamais arriver)
-            $lastDay = "";
-            foreach ($obsTr as $o) {
-                $val = $o['resultat_obs'] / 1000;
-                $sum += $val;
-                $count++;
-                $day = date('d/m', strtotime($o['date_obs']));
-                if ($day != $lastDay) {
-                    array_unshift($chartLabels, $day);
-                    array_unshift($chartData, number_format($val, 2, '.', ''));
-                    $lastDay = $day;
-                }
+        $sourceObs = ($dataFullTr && isset($dataFullTr['data'])) ? $dataFullTr['data'] : $obsTr;
+        
+        $lastDay = "";
+        foreach ($sourceObs as $o) {
+            $val = $o['resultat_obs'] / 1000;
+            $sum += $val;
+            $count++;
+            $timestamp = strtotime($o['date_obs']);
+            $day = date('d/m', $timestamp);
+            
+            if ($day != $lastDay) {
+                array_unshift($chartLabels, $day);
+                array_unshift($chartData, number_format($val, 2, '.', ''));
+                $lastDay = $day;
             }
         }
     }

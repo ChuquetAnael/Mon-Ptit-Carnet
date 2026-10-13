@@ -132,7 +132,7 @@ try {
                 <label class="btn rounded-pill flex-fill fw-bold border-0 text-muted" for="btn-maree">Marée</label>
 
                 <input type="radio" class="btn-check" name="viewToggle" id="btn-riviere" value="riviere" autocomplete="off">
-                <label class="btn rounded-pill flex-fill fw-bold border-0 text-muted" for="btn-riviere">Rivière</label>
+                <label class="btn rounded-pill flex-fill fw-bold border-0 text-muted" for="btn-riviere">Rivière(Beta)</label>
             </div>
 
             <!-- SECTION 1 : PRÉVISIONS 7 JOURS -->
