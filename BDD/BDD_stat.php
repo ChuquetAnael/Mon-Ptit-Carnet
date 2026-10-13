@@ -1,6 +1,6 @@
 <?php
     // 1. KPI : Total des sessions
-    $stmtSess = $pdo->prepare("SELECT COUNT(*) as total_sessions FROM SESSION_P WHERE ID_UTILISATEUR = :id_user");
+    $stmtSess = $pdo->prepare("SELECT COUNT(*) as total_sessions FROM session_p WHERE ID_UTILISATEUR = :id_user");
     $stmtSess->execute(['id_user' => $id_user]);
     $total_sessions = $stmtSess->fetchColumn();
 
@@ -9,8 +9,8 @@
         SELECT 
             SUM(COALESCE(p.QUANTITE, 1)) as total_poissons,
             SUM(CASE WHEN p.RELACHE = 1 THEN COALESCE(p.QUANTITE, 1) ELSE 0 END) as relaches
-        FROM PRISE p
-        JOIN SESSION_P s ON p.ID_SESSION = s.ID_SESSION
+        FROM prise p
+        JOIN session_p s ON p.ID_SESSION = s.ID_SESSION
         WHERE s.ID_UTILISATEUR = :id_user
     ");
     $stmtPrises->execute(['id_user' => $id_user]);
@@ -22,9 +22,9 @@
     // 3. KPI : Plus gros poisson (Record Personnel / PB)
     $stmtRecord = $pdo->prepare("
         SELECT MAX(p.TAILLE_CM) as record_taille, e.NOM_COM 
-        FROM PRISE p 
-        JOIN ESPECE e ON p.ID_ESPECE = e.ID_ESPECE 
-        JOIN SESSION_P s ON p.ID_SESSION = s.ID_SESSION 
+        FROM prise p 
+        JOIN espece e ON p.ID_ESPECE = e.ID_ESPECE 
+        JOIN session_p s ON p.ID_SESSION = s.ID_SESSION 
         WHERE s.ID_UTILISATEUR = :id_user 
         GROUP BY p.ID_ESPECE, e.NOM_COM
         ORDER BY record_taille DESC LIMIT 1
@@ -37,9 +37,9 @@
         SELECT e.NOM_COM, e.ICONE_CHEMIN, 
                SUM(COALESCE(p.QUANTITE, 1)) as nb,
                MAX(p.TAILLE_CM) as pb_cm
-        FROM PRISE p 
-        JOIN ESPECE e ON p.ID_ESPECE = e.ID_ESPECE 
-        JOIN SESSION_P s ON p.ID_SESSION = s.ID_SESSION 
+        FROM prise p 
+        JOIN espece e ON p.ID_ESPECE = e.ID_ESPECE 
+        JOIN session_p s ON p.ID_SESSION = s.ID_SESSION 
         WHERE s.ID_UTILISATEUR = :id_user 
         GROUP BY e.ID_ESPECE, e.NOM_COM, e.ICONE_CHEMIN
         ORDER BY nb DESC
@@ -53,11 +53,11 @@
                COUNT(s.ID_SESSION) as nb_sessions,
                SUM(COALESCE(sub.nb_poissons, 0)) as nb_prises,
                (SUM(COALESCE(sub.nb_poissons, 0)) / COUNT(s.ID_SESSION)) as ratio
-        FROM SESSION_P s
-        JOIN SPOT sp ON s.ID_SPOT = sp.ID_SPOT
+        FROM session_p s
+        JOIN spot sp ON s.ID_SPOT = sp.ID_SPOT
         LEFT JOIN (
             SELECT ID_SESSION, SUM(COALESCE(QUANTITE, 1)) as nb_poissons
-            FROM PRISE
+            FROM prise
             GROUP BY ID_SESSION
         ) sub ON s.ID_SESSION = sub.ID_SESSION
         WHERE s.ID_UTILISATEUR = :id_user
@@ -70,9 +70,9 @@
     // 6. Top Techniques & Leurres
     $stmtTech = $pdo->prepare("
         SELECT t.NOM_TECHNIQUE, SUM(COALESCE(p.QUANTITE, 1)) as nb 
-        FROM PRISE p 
-        JOIN TECHNIQUE t ON p.ID_TECHNIQUE = t.ID_TECHNIQUE 
-        JOIN SESSION_P s ON p.ID_SESSION = s.ID_SESSION 
+        FROM prise p 
+        JOIN technique t ON p.ID_TECHNIQUE = t.ID_TECHNIQUE 
+        JOIN session_p s ON p.ID_SESSION = s.ID_SESSION 
         WHERE s.ID_UTILISATEUR = :id_user 
         GROUP BY t.ID_TECHNIQUE, t.NOM_TECHNIQUE ORDER BY nb DESC LIMIT 3
     ");
@@ -81,9 +81,9 @@
 
     $stmtLeurre = $pdo->prepare("
         SELECT l.NOM_LEURRE, SUM(COALESCE(p.QUANTITE, 1)) as nb 
-        FROM PRISE p 
-        JOIN LEURRE l ON p.ID_LEURRE = l.ID_LEURRE 
-        JOIN SESSION_P s ON p.ID_SESSION = s.ID_SESSION 
+        FROM prise p 
+        JOIN leurre l ON p.ID_LEURRE = l.ID_LEURRE 
+        JOIN session_p s ON p.ID_SESSION = s.ID_SESSION 
         WHERE s.ID_UTILISATEUR = :id_user 
         GROUP BY l.ID_LEURRE, l.NOM_LEURRE ORDER BY nb DESC LIMIT 3
     ");
@@ -97,10 +97,10 @@
             DATE_FORMAT(s.DATE_DEBUT, '%Y') as annee,
             SUM(COALESCE(sub.nb_poissons, 0)) as nb_prises,
             SUM(TIMESTAMPDIFF(MINUTE, s.DATE_DEBUT, s.DATE_FIN)) as minutes_peche
-        FROM SESSION_P s 
+        FROM session_p s 
         LEFT JOIN (
             SELECT ID_SESSION, SUM(COALESCE(QUANTITE, 1)) as nb_poissons
-            FROM PRISE
+            FROM prise
             GROUP BY ID_SESSION
         ) sub ON s.ID_SESSION = sub.ID_SESSION
         WHERE s.ID_UTILISATEUR = :id_user 
@@ -126,8 +126,8 @@
     $stmtHeures = $pdo->prepare("
         SELECT HOUR(p.DATE_HEURE) as heure, 
                (SUM(COALESCE(p.QUANTITE, 1)) / COUNT(DISTINCT s.ID_SESSION)) as ratio
-        FROM PRISE p 
-        JOIN SESSION_P s ON p.ID_SESSION = s.ID_SESSION 
+        FROM prise p 
+        JOIN session_p s ON p.ID_SESSION = s.ID_SESSION 
         WHERE s.ID_UTILISATEUR = :id_user AND p.DATE_HEURE IS NOT NULL 
         GROUP BY heure ORDER BY heure ASC
     ");
@@ -150,10 +150,10 @@
     $stmtCiel = $pdo->prepare("
         SELECT s.DESCRIP_CIEL, 
                (SUM(COALESCE(sub.nb_poissons, 0)) / COUNT(s.ID_SESSION)) as ratio
-        FROM SESSION_P s
+        FROM session_p s
         LEFT JOIN (
             SELECT ID_SESSION, SUM(COALESCE(QUANTITE, 1)) as nb_poissons
-            FROM PRISE
+            FROM prise
             GROUP BY ID_SESSION
         ) sub ON s.ID_SESSION = sub.ID_SESSION
         WHERE s.ID_UTILISATEUR = :id_user AND s.DESCRIP_CIEL IS NOT NULL AND s.DESCRIP_CIEL != ''
@@ -170,10 +170,10 @@
         SELECT 
             FLOOR(s.TEMPERATURE / 5) * 5 AS tranche_debut,
             (SUM(COALESCE(sub.nb_poissons, 0)) / COUNT(s.ID_SESSION)) as ratio
-        FROM SESSION_P s
+        FROM session_p s
         LEFT JOIN (
             SELECT ID_SESSION, SUM(COALESCE(QUANTITE, 1)) as nb_poissons
-            FROM PRISE
+            FROM prise
             GROUP BY ID_SESSION
         ) sub ON s.ID_SESSION = sub.ID_SESSION
         WHERE s.ID_UTILISATEUR = :id_user AND s.TEMPERATURE IS NOT NULL 
@@ -210,10 +210,10 @@
     $stmtVent = $pdo->prepare("
         SELECT s.DIREC_VENT, 
                (SUM(COALESCE(sub.nb_poissons, 0)) / COUNT(s.ID_SESSION)) as ratio
-        FROM SESSION_P s
+        FROM session_p s
         LEFT JOIN (
             SELECT ID_SESSION, SUM(COALESCE(QUANTITE, 1)) as nb_poissons
-            FROM PRISE
+            FROM prise
             GROUP BY ID_SESSION
         ) sub ON s.ID_SESSION = sub.ID_SESSION
         WHERE s.ID_UTILISATEUR = :id_user AND s.DIREC_VENT IS NOT NULL AND s.DIREC_VENT != ''

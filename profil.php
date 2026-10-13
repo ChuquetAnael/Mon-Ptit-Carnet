@@ -8,7 +8,7 @@ try {
     $id_user = $_SESSION['user_id'];
 
     // 1. Récupération des informations de l'utilisateur
-    $stmt = $pdo->prepare("SELECT PSEUDO, MAIL, DATE_CREATION, DESCRIPTION, PDP_CHEMIN, BANNIERE_CHEMIN FROM UTILISATEUR WHERE ID_UTILISATEUR = :id");
+    $stmt = $pdo->prepare("SELECT PSEUDO, MAIL, DATE_CREATION, DESCRIPTION, PDP_CHEMIN, BANNIERE_CHEMIN FROM utilisateur WHERE ID_UTILISATEUR = :id");
     $stmt->execute(['id' => $id_user]);
     $profil = $stmt->fetch(PDO::FETCH_ASSOC);
 
@@ -18,7 +18,7 @@ try {
     $offset = ($page - 1) * $limit;
 
     // Calcul du nombre total de pages
-    $stmt_count = $pdo->prepare("SELECT COUNT(ID_SESSION) FROM SESSION_P WHERE ID_UTILISATEUR = :id");
+    $stmt_count = $pdo->prepare("SELECT COUNT(ID_SESSION) FROM session_p WHERE ID_UTILISATEUR = :id");
     $stmt_count->execute(['id' => $id_user]);
     $total_sessions = $stmt_count->fetchColumn();
     $total_pages = ceil($total_sessions / $limit);
@@ -32,11 +32,11 @@ try {
             ts.TYPE_SES_ICONE_CHEMIN,
             sp.NOM_SPOT,
             COALESCE(SUM(p.QUANTITE), 0) AS nb_prises,
-            (SELECT p2.PHOTO_CHEMIN FROM PRISE p2 WHERE p2.ID_SESSION = s.ID_SESSION AND p2.PHOTO_CHEMIN IS NOT NULL LIMIT 1) AS premiere_photo
-        FROM SESSION_P s
-        LEFT JOIN TYPE_SESSION ts ON s.ID_TYPE_SESSION = ts.ID_TYPE_SESSION
-        LEFT JOIN SPOT sp ON s.ID_SPOT = sp.ID_SPOT
-        LEFT JOIN PRISE p ON s.ID_SESSION = p.ID_SESSION
+            (SELECT p2.PHOTO_CHEMIN FROM prise p2 WHERE p2.ID_SESSION = s.ID_SESSION AND p2.PHOTO_CHEMIN IS NOT NULL LIMIT 1) AS premiere_photo
+        FROM session_p s
+        LEFT JOIN type_session ts ON s.ID_TYPE_SESSION = ts.ID_TYPE_SESSION
+        LEFT JOIN spot sp ON s.ID_SPOT = sp.ID_SPOT
+        LEFT JOIN prise p ON s.ID_SESSION = p.ID_SESSION
         WHERE s.ID_UTILISATEUR = :id
         GROUP BY s.ID_SESSION
         ORDER BY s.DATE_DEBUT DESC
@@ -55,9 +55,9 @@ try {
             e.NOM_COM, 
             e.ICONE_CHEMIN, 
             MAX(p.TAILLE_CM) AS record_taille
-        FROM PRISE p
-        JOIN SESSION_P s ON p.ID_SESSION = s.ID_SESSION
-        JOIN ESPECE e ON p.ID_ESPECE = e.ID_ESPECE
+        FROM prise p
+        JOIN session_p s ON p.ID_SESSION = s.ID_SESSION
+        JOIN espece e ON p.ID_ESPECE = e.ID_ESPECE
         WHERE s.ID_UTILISATEUR = :id AND p.TAILLE_CM IS NOT NULL
         GROUP BY e.ID_ESPECE, e.NOM_COM, e.ICONE_CHEMIN
         ORDER BY record_taille DESC

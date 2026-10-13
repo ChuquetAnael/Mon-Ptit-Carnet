@@ -20,11 +20,11 @@ try {
         $id_ticket = (int)$_POST['id_ticket'];
         
         if ($_POST['action'] === 'fermer') {
-            $stmt = $pdo->prepare("UPDATE TICKET SET STATUT = 'Fermé' WHERE ID_TICKET = ?");
+            $stmt = $pdo->prepare("UPDATE ticket SET STATUT = 'Fermé' WHERE ID_TICKET = ?");
             $stmt->execute([$id_ticket]);
             $message_succes = "Le ticket #$id_ticket a été résolu et archivé avec succès.";
         } elseif ($_POST['action'] === 'supprimer') {
-            $stmt = $pdo->prepare("DELETE FROM TICKET WHERE ID_TICKET = ?");
+            $stmt = $pdo->prepare("DELETE FROM ticket WHERE ID_TICKET = ?");
             $stmt->execute([$id_ticket]);
             $message_succes = "Le ticket #$id_ticket a été supprimé définitivement.";
         }
@@ -33,8 +33,8 @@ try {
     // 1. Récupération des tickets OUVERTS, avec le pseudo du compte lié (s'il existe)
     $stmt_ouverts = $pdo->query("
         SELECT t.*, u.PSEUDO 
-        FROM TICKET t 
-        LEFT JOIN UTILISATEUR u ON t.ID_UTILISATEUR = u.ID_UTILISATEUR 
+        FROM ticket t 
+        LEFT JOIN utilisateur u ON t.ID_UTILISATEUR = u.ID_UTILISATEUR 
         WHERE t.STATUT = 'Ouvert' 
         ORDER BY t.RAISON ASC, t.DATE_CREATION ASC
     ");
@@ -51,8 +51,8 @@ try {
     // 2. Récupération des tickets FERMÉS (Archives)
     $stmt_fermes = $pdo->query("
         SELECT t.*, u.PSEUDO 
-        FROM TICKET t 
-        LEFT JOIN UTILISATEUR u ON t.ID_UTILISATEUR = u.ID_UTILISATEUR 
+        FROM ticket t 
+        LEFT JOIN utilisateur u ON t.ID_UTILISATEUR = u.ID_UTILISATEUR 
         WHERE t.STATUT = 'Fermé' 
         ORDER BY t.DATE_CREATION DESC
     ");

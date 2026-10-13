@@ -15,7 +15,7 @@ try {
     $pdo->setAttribute(PDO::ATTR_ERRMODE, PDO::ERRMODE_EXCEPTION);
 
     // L'utilisateur connecté est-il dans la table ADMIN ?
-    $stmt_check = $pdo->prepare("SELECT 1 FROM ADMIN WHERE ID_UTILISATEUR = ?");
+    $stmt_check = $pdo->prepare("SELECT 1 FROM admin WHERE ID_UTILISATEUR = ?");
     $stmt_check->execute([$id_user]);
     if (!$stmt_check->fetch()) {
         header('Location: accueil.php');
@@ -27,29 +27,29 @@ try {
     // =========================================================================
 
     // Total des utilisateurs
-    $nb_utilisateurs = $pdo->query("SELECT COUNT(*) FROM UTILISATEUR")->fetchColumn();
+    $nb_utilisateurs = $pdo->query("SELECT COUNT(*) FROM utilisateur")->fetchColumn();
 
     // Total des sessions
-    $nb_sessions = $pdo->query("SELECT COUNT(*) FROM SESSION_P")->fetchColumn();
+    $nb_sessions = $pdo->query("SELECT COUNT(*) FROM session_p")->fetchColumn();
 
     // Total des prises et taux de No-Kill global
     $prises_data = $pdo->query("
         SELECT 
             COUNT(ID_PRISE) as total_prises, 
             SUM(CASE WHEN RELACHE = 1 THEN 1 ELSE 0 END) as relachees 
-        FROM PRISE
+        FROM prise
     ")->fetch(PDO::FETCH_ASSOC);
     
     $nb_prises = $prises_data['total_prises'] ?? 0;
     $taux_nokill = ($nb_prises > 0) ? round(($prises_data['relachees'] / $nb_prises) * 100) : 0;
 
     // Tickets en attente
-    $nb_tickets = $pdo->query("SELECT COUNT(*) FROM TICKET WHERE STATUT = 'Ouvert'")->fetchColumn();
+    $nb_tickets = $pdo->query("SELECT COUNT(*) FROM ticket WHERE STATUT = 'Ouvert'")->fetchColumn();
 
     // Les 5 derniers inscrits
     $derniers_inscrits = $pdo->query("
         SELECT PSEUDO, MAIL, DATE_CREATION, PDP_CHEMIN 
-        FROM UTILISATEUR 
+        FROM utilisateur 
         ORDER BY DATE_CREATION DESC 
         LIMIT 5
     ")->fetchAll(PDO::FETCH_ASSOC);
@@ -62,7 +62,7 @@ try {
             DATE_FORMAT(DATE_CREATION, '%m') as mois_num, 
             DATE_FORMAT(DATE_CREATION, '%Y') as annee,
             COUNT(*) as nb_inscrits
-        FROM UTILISATEUR
+        FROM utilisateur
         GROUP BY annee, mois_num
         ORDER BY annee ASC, mois_num ASC
         LIMIT 6

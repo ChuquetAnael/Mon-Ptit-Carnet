@@ -26,7 +26,7 @@ try {
         if (isset($_POST['is_new_spot']) and$_POST['is_new_spot'] === '1' and !empty($_POST['nouveau_nom_spot'])) {$loc = null;
             if ($lat and $lng) {$loc = $lat . ', ' .$lng;
             }
-            $stmtSpot =$pdo->prepare("INSERT INTO SPOT (ID_UTILISATEUR, ID_TYPE_SPOT, NOM_SPOT, LOCALISATION) VALUES (?, ?, ?, ?)");
+            $stmtSpot =$pdo->prepare("INSERT INTO spot (ID_UTILISATEUR, ID_TYPE_SPOT, NOM_SPOT, LOCALISATION) VALUES (?, ?, ?, ?)");
             $stmtSpot->execute([$id_user,$_POST['nouveau_type_spot'], $_POST['nouveau_nom_spot'],$loc]);
             $id_spot =$pdo->lastInsertId();
         } elseif ($id_spot === 'new') {$id_spot = null;
@@ -40,7 +40,7 @@ try {
 
         // Mise à jour de la session globale (Table SESSION_P) incluant Météo & Marée
         $stmtUpdate =$pdo->prepare("
-            UPDATE SESSION_P 
+            UPDATE session_p 
             SET DATE_DEBUT = ?, DATE_FIN = ?, ID_TYPE_SESSION = ?, ID_SPOT = ?,
                 TEMPERATURE = ?, PRESSION_HPA = ?, VITESSE_VENT = ?, DIREC_VENT = ?, DESCRIP_CIEL = ?, COEFF_MAREE = ?, DESC_MAREE = ?
             WHERE ID_SESSION = ? AND ID_UTILISATEUR = ?
@@ -68,8 +68,8 @@ try {
     // =========================================================================
     $stmtSession =$pdo->prepare("
         SELECT s.*, sp.LOCALISATION 
-        FROM SESSION_P s
-        LEFT JOIN SPOT sp ON s.ID_SPOT = sp.ID_SPOT
+        FROM session_p s
+        LEFT JOIN spot sp ON s.ID_SPOT = sp.ID_SPOT
         WHERE s.ID_SESSION = ? AND s.ID_UTILISATEUR = ?
     ");
     $stmtSession->execute([$id_session,$id_user]);
@@ -94,7 +94,7 @@ try {
         }
     } else {
         // S'il n'y a pas de spot enregistré, on essaie de lire les GPS de la première prise associée
-        $stmtPriseGPS =$pdo->prepare("SELECT LATITUDE, LONGITUDE FROM PRISE WHERE ID_SESSION = ? AND LATITUDE IS NOT NULL LIMIT 1");
+        $stmtPriseGPS =$pdo->prepare("SELECT LATITUDE, LONGITUDE FROM prise WHERE ID_SESSION = ? AND LATITUDE IS NOT NULL LIMIT 1");
         $stmtPriseGPS->execute([$id_session]);
         $priseGPS =$stmtPriseGPS->fetch(PDO::FETCH_ASSOC);
         if ($priseGPS) {
@@ -106,12 +106,12 @@ try {
     // =========================================================================
     // 3. CHARGEMENT DES LISTES (Spots et Types)
     // =========================================================================
-    $spots =$pdo->prepare("SELECT ID_SPOT, NOM_SPOT, LOCALISATION FROM SPOT WHERE ID_UTILISATEUR = ? ORDER BY NOM_SPOT");
+    $spots =$pdo->prepare("SELECT ID_SPOT, NOM_SPOT, LOCALISATION FROM spot WHERE ID_UTILISATEUR = ? ORDER BY NOM_SPOT");
     $spots->execute([$id_user]);
     $liste_spots =$spots->fetchAll(PDO::FETCH_ASSOC);
 
-    $types_spot =$pdo->query("SELECT ID_TYPE_SPOT, NOM_TYPE_SPOT FROM TYPE_SPOT ORDER BY NOM_TYPE_SPOT")->fetchAll(PDO::FETCH_ASSOC);
-    $types_session =$pdo->query("SELECT ID_TYPE_SESSION, NOM_TYPE_SESSION FROM TYPE_SESSION ORDER BY NOM_TYPE_SESSION")->fetchAll(PDO::FETCH_ASSOC);
+    $types_spot =$pdo->query("SELECT ID_TYPE_SPOT, NOM_TYPE_SPOT FROM type_spot ORDER BY NOM_TYPE_SPOT")->fetchAll(PDO::FETCH_ASSOC);
+    $types_session =$pdo->query("SELECT ID_TYPE_SESSION, NOM_TYPE_SESSION FROM type_session ORDER BY NOM_TYPE_SESSION")->fetchAll(PDO::FETCH_ASSOC);
 
 } catch (PDOException $e) {
     die("Erreur : " . $e->getMessage());

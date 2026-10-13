@@ -17,7 +17,7 @@ try {
     $pdo->setAttribute(PDO::ATTR_ERRMODE, PDO::ERRMODE_EXCEPTION);
 
     // L'utilisateur connecté est-il dans la table ADMIN ?
-    $stmt_check = $pdo->prepare("SELECT 1 FROM ADMIN WHERE ID_UTILISATEUR = ?");
+    $stmt_check = $pdo->prepare("SELECT 1 FROM admin WHERE ID_UTILISATEUR = ?");
     $stmt_check->execute([$_SESSION['user_id']]);
     if (!$stmt_check->fetch()) {
         // Tentative d'accès frauduleuse
@@ -34,12 +34,12 @@ try {
             $message_erreur = "Action refusée : Vous ne pouvez pas modifier votre propre compte administrateur ici.";
         } else {
             if ($_POST['action'] === 'promouvoir') {
-                $stmt = $pdo->prepare("INSERT IGNORE INTO ADMIN (ID_UTILISATEUR, DATE_PROMOTION) VALUES (?, NOW())");
+                $stmt = $pdo->prepare("INSERT IGNORE INTO admin (ID_UTILISATEUR, DATE_PROMOTION) VALUES (?, NOW())");
                 $stmt->execute([$id_cible]);
                 $message_succes = "L'utilisateur #$id_cible a été promu Administrateur.";
                 
             } elseif ($_POST['action'] === 'retrograder') {
-                $stmt = $pdo->prepare("DELETE FROM ADMIN WHERE ID_UTILISATEUR = ?");
+                $stmt = $pdo->prepare("DELETE FROM admin WHERE ID_UTILISATEUR = ?");
                 $stmt->execute([$id_cible]);
                 $message_succes = "Les droits d'administration de l'utilisateur #$id_cible ont été révoqués.";
                 
@@ -47,13 +47,13 @@ try {
                 // La suppression d'un compte demande de supprimer ses dépendances d'abord (ou d'avoir configuré le ON DELETE CASCADE dans la BDD)
                 // Par sécurité, on le fait manuellement dans le bon ordre
                 $pdo->beginTransaction();
-                $pdo->prepare("DELETE FROM PRISE WHERE ID_SESSION IN (SELECT ID_SESSION FROM SESSION_P WHERE ID_UTILISATEUR = ?)")->execute([$id_cible]);
-                $pdo->prepare("DELETE FROM SESSION_P WHERE ID_UTILISATEUR = ?")->execute([$id_cible]);
-                $pdo->prepare("DELETE FROM SPOT WHERE ID_UTILISATEUR = ?")->execute([$id_cible]);
-                $pdo->prepare("DELETE FROM LEURRE WHERE ID_UTILISATEUR = ?")->execute([$id_cible]);
-                $pdo->prepare("DELETE FROM APPAT WHERE ID_UTILISATEUR = ?")->execute([$id_cible]);
-                $pdo->prepare("DELETE FROM ADMIN WHERE ID_UTILISATEUR = ?")->execute([$id_cible]);
-                $pdo->prepare("DELETE FROM UTILISATEUR WHERE ID_UTILISATEUR = ?")->execute([$id_cible]);
+                $pdo->prepare("DELETE FROM prise WHERE ID_SESSION IN (SELECT ID_SESSION FROM session_p WHERE ID_UTILISATEUR = ?)")->execute([$id_cible]);
+                $pdo->prepare("DELETE FROM session_p WHERE ID_UTILISATEUR = ?")->execute([$id_cible]);
+                $pdo->prepare("DELETE FROM spot WHERE ID_UTILISATEUR = ?")->execute([$id_cible]);
+                $pdo->prepare("DELETE FROM leurre WHERE ID_UTILISATEUR = ?")->execute([$id_cible]);
+                $pdo->prepare("DELETE FROM appat WHERE ID_UTILISATEUR = ?")->execute([$id_cible]);
+                $pdo->prepare("DELETE FROM admin WHERE ID_UTILISATEUR = ?")->execute([$id_cible]);
+                $pdo->prepare("DELETE FROM utilisateur WHERE ID_UTILISATEUR = ?")->execute([$id_cible]);
                 $pdo->commit();
                 $message_succes = "Le compte utilisateur #$id_cible et toutes ses données ont été supprimés définitivement.";
             }
@@ -71,10 +71,10 @@ try {
             u.DATE_CREATION, 
             u.PDP_CHEMIN,
             (a.ID_UTILISATEUR IS NOT NULL) as est_admin,
-            (SELECT COUNT(*) FROM SESSION_P s WHERE s.ID_UTILISATEUR = u.ID_UTILISATEUR) as nb_sessions,
-            (SELECT COUNT(*) FROM PRISE p JOIN SESSION_P s ON p.ID_SESSION = s.ID_SESSION WHERE s.ID_UTILISATEUR = u.ID_UTILISATEUR) as nb_prises
-        FROM UTILISATEUR u
-        LEFT JOIN ADMIN a ON u.ID_UTILISATEUR = a.ID_UTILISATEUR
+            (SELECT COUNT(*) FROM session_p s WHERE s.ID_UTILISATEUR = u.ID_UTILISATEUR) as nb_sessions,
+            (SELECT COUNT(*) FROM prise p JOIN session_p s ON p.ID_SESSION = s.ID_SESSION WHERE s.ID_UTILISATEUR = u.ID_UTILISATEUR) as nb_prises
+        FROM utilisateur u
+        LEFT JOIN admin a ON u.ID_UTILISATEUR = a.ID_UTILISATEUR
         ORDER BY u.DATE_CREATION DESC
     ";
     

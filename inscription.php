@@ -9,7 +9,7 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
         $pdo = new PDO("mysql:host=$host;dbname=$dbname;charset=utf8", $user, $pass);
         $pdo->setAttribute(PDO::ATTR_ERRMODE, PDO::ERRMODE_EXCEPTION);
 
-        $stmt_check = $pdo->prepare("SELECT ID_UTILISATEUR FROM UTILISATEUR WHERE MAIL = :mail");
+        $stmt_check = $pdo->prepare("SELECT ID_UTILISATEUR FROM utilisateur WHERE MAIL = :mail");
         $stmt_check->execute(['mail' => $_POST['email']]);
         
         if ($stmt_check->fetch()) {
@@ -18,7 +18,7 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
             $mot_de_passe_hache = password_hash($_POST['mot_de_passe'], PASSWORD_DEFAULT);
             $date_creation = date('Y-m-d'); // Date du jour pour la colonne DATE_CREATION
 
-            $stmt_insert = $pdo->prepare("INSERT INTO UTILISATEUR (PSEUDO, MAIL, MOT_DE_PASSE, DATE_CREATION) VALUES (:pseudo, :mail, :mdp, :date_crea)");
+            $stmt_insert = $pdo->prepare("INSERT INTO utilisateur (PSEUDO, MAIL, MOT_DE_PASSE, DATE_CREATION) VALUES (:pseudo, :mail, :mdp, :date_crea)");
             $stmt_insert->execute([
                 'pseudo' => $_POST['pseudo'],
                 'mail' => $_POST['email'],

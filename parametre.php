@@ -13,7 +13,7 @@ try {
     // VÉRIFICATION DES DROITS ADMINISTRATEUR
     // =========================================================================
     $is_admin = false;
-    $stmtAdmin = $pdo->prepare("SELECT 1 FROM ADMIN WHERE ID_UTILISATEUR = :id");
+    $stmtAdmin = $pdo->prepare("SELECT 1 FROM admin WHERE ID_UTILISATEUR = :id");
     $stmtAdmin->execute(['id' => $id_user]);
     if ($stmtAdmin->fetch()) {
         $is_admin = true;
@@ -26,7 +26,7 @@ try {
         $password_fourni = $_POST['password_confirm'];
 
         // 1. Récupérer les infos de l'utilisateur (Mot de passe + Photos de profil)
-        $stmtUser = $pdo->prepare("SELECT mot_de_passe, PDP_CHEMIN, BANNIERE_CHEMIN FROM UTILISATEUR WHERE ID_UTILISATEUR = :id");
+        $stmtUser = $pdo->prepare("SELECT mot_de_passe, PDP_CHEMIN, BANNIERE_CHEMIN FROM utilisateur WHERE ID_UTILISATEUR = :id");
         $stmtUser->execute(['id' => $id_user]);
         $userData = $stmtUser->fetch(PDO::FETCH_ASSOC);
 
@@ -42,8 +42,8 @@ try {
                 // Récupérer toutes les photos de prises de l'utilisateur
                 $stmtPhotos = $pdo->prepare("
                     SELECT p.PHOTO_CHEMIN 
-                    FROM PRISE p 
-                    JOIN SESSION_P s ON p.ID_SESSION = s.ID_SESSION 
+                    FROM prise p 
+                    JOIN session_p s ON p.ID_SESSION = s.ID_SESSION 
                     WHERE s.ID_UTILISATEUR = :id AND p.PHOTO_CHEMIN IS NOT NULL
                 ");
                 $stmtPhotos->execute(['id' => $id_user]);
@@ -58,16 +58,16 @@ try {
                 }
 
                 // --- B. SUPPRESSION EN BASE DE DONNÉES ---
-                $pdo->prepare("DELETE FROM PRISE WHERE ID_SESSION IN (SELECT ID_SESSION FROM SESSION_P WHERE ID_UTILISATEUR = ?)")->execute([$id_user]);
-                $pdo->prepare("DELETE FROM SESSION_P WHERE ID_UTILISATEUR = ?")->execute([$id_user]);
-                $pdo->prepare("DELETE FROM LEURRE WHERE ID_UTILISATEUR = ?")->execute([$id_user]);
-                $pdo->prepare("DELETE FROM APPAT WHERE ID_UTILISATEUR = ?")->execute([$id_user]);
-                $pdo->prepare("DELETE FROM SPOT WHERE ID_UTILISATEUR = ?")->execute([$id_user]);
+                $pdo->prepare("DELETE FROM prise WHERE ID_SESSION IN (SELECT ID_SESSION FROM session_p WHERE ID_UTILISATEUR = ?)")->execute([$id_user]);
+                $pdo->prepare("DELETE FROM session_p WHERE ID_UTILISATEUR = ?")->execute([$id_user]);
+                $pdo->prepare("DELETE FROM leurre WHERE ID_UTILISATEUR = ?")->execute([$id_user]);
+                $pdo->prepare("DELETE FROM appat WHERE ID_UTILISATEUR = ?")->execute([$id_user]);
+                $pdo->prepare("DELETE FROM spot WHERE ID_UTILISATEUR = ?")->execute([$id_user]);
                 
                 // Suppression de la table ADMIN s'il en faisait partie
-                $pdo->prepare("DELETE FROM ADMIN WHERE ID_UTILISATEUR = ?")->execute([$id_user]);
+                $pdo->prepare("DELETE FROM admin WHERE ID_UTILISATEUR = ?")->execute([$id_user]);
                 
-                $pdo->prepare("DELETE FROM UTILISATEUR WHERE ID_UTILISATEUR = ?")->execute([$id_user]);
+                $pdo->prepare("DELETE FROM utilisateur WHERE ID_UTILISATEUR = ?")->execute([$id_user]);
 
                 // --- C. DÉCONNEXION ET REDIRECTION ---
                 session_destroy();

@@ -10,7 +10,7 @@ $email_pre_rempli = "";
 if (isset($_SESSION['user_id'])) {
     try {
         $pdo = new PDO("mysql:host=$host;dbname=$dbname;charset=utf8", $user, $pass);
-        $stmt = $pdo->prepare("SELECT MAIL FROM UTILISATEUR WHERE ID_UTILISATEUR = :id");
+        $stmt = $pdo->prepare("SELECT MAIL FROM utilisateur WHERE ID_UTILISATEUR = :id");
         $stmt->execute(['id' => $_SESSION['user_id']]);
         $user_data = $stmt->fetch(PDO::FETCH_ASSOC);
         if ($user_data) {
@@ -32,7 +32,7 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
         $date_creation = date('Y-m-d H:i:s');
 
         // Insertion du ticket dans la base de données
-        $stmt = $pdo->prepare("INSERT INTO TICKET (ID_UTILISATEUR, EMAIL, RAISON, MESSAGE, DATE_CREATION) VALUES (:id_user, :email, :raison, :message, :date_crea)");
+        $stmt = $pdo->prepare("INSERT INTO ticket (ID_UTILISATEUR, EMAIL, RAISON, MESSAGE, DATE_CREATION) VALUES (:id_user, :email, :raison, :message, :date_crea)");
         $stmt->execute([
             'id_user' => $id_user,
             'email' => $email,

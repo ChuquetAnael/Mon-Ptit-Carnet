@@ -6,15 +6,15 @@ try {
     $pdo = new PDO("mysql:host=$host;dbname=$dbname;charset=utf8", $user, $pass);$pdo->setAttribute(PDO::ATTR_ERRMODE, PDO::ERRMODE_EXCEPTION);
 
     // 1. Récupération du pseudo pour un accueil personnalisé
-    $stmtUser =$pdo->prepare("SELECT PSEUDO FROM UTILISATEUR WHERE ID_UTILISATEUR = :id");
+    $stmtUser =$pdo->prepare("SELECT PSEUDO FROM utilisateur WHERE ID_UTILISATEUR = :id");
     $stmtUser->execute(['id' => $_SESSION['user_id']]);$utilisateur = $stmtUser->fetch(PDO::FETCH_ASSOC);$pseudo = $utilisateur ? $utilisateur['PSEUDO'] : 'Pêcheur';
 
     // 2. Récupération dynamique des 3 dernières prises de l'utilisateur
     $stmtPrises =$pdo->prepare("
         SELECT p.PHOTO_CHEMIN, p.TAILLE_CM, e.NOM_COM, e.ICONE_CHEMIN, p.DATE_HEURE
-        FROM PRISE p
-        JOIN ESPECE e ON p.ID_ESPECE = e.ID_ESPECE
-        JOIN SESSION_P s ON p.ID_SESSION = s.ID_SESSION
+        FROM prise p
+        JOIN espece e ON p.ID_ESPECE = e.ID_ESPECE
+        JOIN session_p s ON p.ID_SESSION = s.ID_SESSION
         WHERE s.ID_UTILISATEUR = :id_user
         ORDER BY p.DATE_HEURE DESC
         LIMIT 3

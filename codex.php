@@ -11,11 +11,11 @@ try {
                e.DESCRIPTION, e.HABITAT_INFO, e.REPRODUCTION,
                GROUP_CONCAT(DISTINCT r.NOM_REPARTITION SEPARATOR ',') AS REPARTITIONS,
                GROUP_CONCAT(DISTINCT h.NOM_HABIT SEPARATOR ',') AS HABITATS
-        FROM ESPECE e
-        LEFT JOIN SE_TROUVER st ON e.ID_ESPECE = st.ID_ESPECE
-        LEFT JOIN REPARTITION_MONDE r ON st.ID_REPARTITION = r.ID_REPARTITION
-        LEFT JOIN HABITER hb ON e.ID_ESPECE = hb.ID_ESPECE
-        LEFT JOIN HABITAT h ON hb.ID_HABIT = h.ID_HABIT
+        FROM espece e
+        LEFT JOIN se_trouver st ON e.ID_ESPECE = st.ID_ESPECE
+        LEFT JOIN repartition_monde r ON st.ID_REPARTITION = r.ID_REPARTITION
+        LEFT JOIN habiter hb ON e.ID_ESPECE = hb.ID_ESPECE
+        LEFT JOIN habitat h ON hb.ID_HABIT = h.ID_HABIT
         GROUP BY e.ID_ESPECE
         ORDER BY e.NOM_COM ASC
     ";
@@ -23,10 +23,10 @@ try {
     $especes = $stmt->fetchAll(PDO::FETCH_ASSOC);
 
     // 2. Récupération dynamique des filtres pour les menus déroulants
-    $stmtHabitats = $pdo->query("SELECT DISTINCT NOM_HABIT FROM HABITAT ORDER BY NOM_HABIT ASC");
+    $stmtHabitats = $pdo->query("SELECT DISTINCT NOM_HABIT FROM habitat ORDER BY NOM_HABIT ASC");
     $liste_habitats = $stmtHabitats->fetchAll(PDO::FETCH_COLUMN);
 
-    $stmtRepartitions = $pdo->query("SELECT DISTINCT NOM_REPARTITION FROM REPARTITION_MONDE ORDER BY NOM_REPARTITION ASC");
+    $stmtRepartitions = $pdo->query("SELECT DISTINCT NOM_REPARTITION FROM repartition_monde ORDER BY NOM_REPARTITION ASC");
     $liste_repartitions = $stmtRepartitions->fetchAll(PDO::FETCH_COLUMN);
 
 } catch (PDOException $e) {

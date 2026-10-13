@@ -11,12 +11,12 @@ function nettoyerImagesOrphelines($pdo, $id_user) {
     // 2. Récupérer TOUTES les images de cet utilisateur validées dans la base de données
     // On combine les photos de profil, bannières, et les photos de prises
     $stmt = $pdo->prepare("
-        SELECT PDP_CHEMIN AS chemin FROM UTILISATEUR WHERE ID_UTILISATEUR = ? AND PDP_CHEMIN IS NOT NULL
+        SELECT PDP_CHEMIN AS chemin FROM utilisateur WHERE ID_UTILISATEUR = ? AND PDP_CHEMIN IS NOT NULL
         UNION
-        SELECT BANNIERE_CHEMIN AS chemin FROM UTILISATEUR WHERE ID_UTILISATEUR = ? AND BANNIERE_CHEMIN IS NOT NULL
+        SELECT BANNIERE_CHEMIN AS chemin FROM utilisateur WHERE ID_UTILISATEUR = ? AND BANNIERE_CHEMIN IS NOT NULL
         UNION
-        SELECT p.PHOTO_CHEMIN AS chemin FROM PRISE p 
-        JOIN SESSION_P s ON p.ID_SESSION = s.ID_SESSION 
+        SELECT p.PHOTO_CHEMIN AS chemin FROM prise p 
+        JOIN session_p s ON p.ID_SESSION = s.ID_SESSION 
         WHERE s.ID_UTILISATEUR = ? AND p.PHOTO_CHEMIN IS NOT NULL
     ");
     $stmt->execute([$id_user, $id_user, $id_user]);

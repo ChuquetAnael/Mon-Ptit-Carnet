@@ -28,8 +28,8 @@ try {
         
         $stmt = $pdo->prepare("
             SELECT p.*, s.ID_UTILISATEUR, s.DATE_DEBUT 
-            FROM PRISE p
-            JOIN SESSION_P s ON p.ID_SESSION = s.ID_SESSION
+            FROM prise p
+            JOIN session_p s ON p.ID_SESSION = s.ID_SESSION
             WHERE p.ID_PRISE = ? AND s.ID_UTILISATEUR = ?
         ");
         $stmt->execute([$id_prise, $id_user]);
@@ -44,7 +44,7 @@ try {
     elseif ($action === 'add' and isset($_GET['id_session']) and is_numeric($_GET['id_session'])) {
         $id_session = (int)$_GET['id_session'];
         
-        $stmtSess = $pdo->prepare("SELECT DATE_DEBUT FROM SESSION_P WHERE ID_SESSION = ? AND ID_UTILISATEUR = ?");
+        $stmtSess = $pdo->prepare("SELECT DATE_DEBUT FROM session_p WHERE ID_SESSION = ? AND ID_UTILISATEUR = ?");
         $stmtSess->execute([$id_session, $id_user]);
         $session_actuelle = $stmtSess->fetch(PDO::FETCH_ASSOC);
 
@@ -87,14 +87,14 @@ try {
             // A. Création à la volée des nouveaux leurres / appâts
             if (strpos((string)$id_leurre_final, 'new_l_') === 0 and !empty($_POST['new_leurres'][$id_leurre_final])) {
                 $nl = $_POST['new_leurres'][$id_leurre_final];
-                $stmtL = $pdo->prepare("INSERT INTO LEURRE (ID_UTILISATEUR, ID_TYPE, NOM_LEURRE, GRAMMAGE, COLORIS) VALUES (?, ?, ?, ?, ?)");
+                $stmtL = $pdo->prepare("INSERT INTO leurre (ID_UTILISATEUR, ID_TYPE, NOM_LEURRE, GRAMMAGE, COLORIS) VALUES (?, ?, ?, ?, ?)");
                 $stmtL->execute([$id_user, $nl['type'], $nl['nom'], !empty($nl['poids']) ? $nl['poids'] : null, !empty($nl['couleur']) ? $nl['couleur'] : null]);
                 $id_leurre_final = $pdo->lastInsertId();
             }
 
             if (strpos((string)$id_appat_final, 'new_a_') === 0 and !empty($_POST['new_appats'][$id_appat_final])) {
                 $na = $_POST['new_appats'][$id_appat_final];
-                $stmtA = $pdo->prepare("INSERT INTO APPAT (ID_UTILISATEUR, ID_TYPE_APPAT, NOM_APPAT) VALUES (?, ?, ?)");
+                $stmtA = $pdo->prepare("INSERT INTO appat (ID_UTILISATEUR, ID_TYPE_APPAT, NOM_APPAT) VALUES (?, ?, ?)");
                 $stmtA->execute([$id_user, $na['type'], $na['nom']]);
                 $id_appat_final = $pdo->lastInsertId();
             }
@@ -130,14 +130,14 @@ try {
             // C. Exécution SQL
             if ($action === 'add') {
                 $stmtInsert = $pdo->prepare("
-                    INSERT INTO PRISE (ID_SESSION, ID_ESPECE, ID_LEURRE, ID_APPAT, ID_TECHNIQUE, TAILLE_CM, POIDS_KG, RELACHE, PHOTO_CHEMIN, LATITUDE, LONGITUDE, QUANTITE, DATE_HEURE) 
+                    INSERT INTO prise (ID_SESSION, ID_ESPECE, ID_LEURRE, ID_APPAT, ID_TECHNIQUE, TAILLE_CM, POIDS_KG, RELACHE, PHOTO_CHEMIN, LATITUDE, LONGITUDE, QUANTITE, DATE_HEURE) 
                     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 ");
                 $stmtInsert->execute([$id_session, $id_espece, $id_leurre_final, $id_appat_final, $id_technique, $taille, $poids, $relache, $photo_chemin, $lat, $lng, $quantite, $date_heure_finale]);
             } 
             elseif ($action === 'edit') {
                 $stmtUpdate = $pdo->prepare("
-                    UPDATE PRISE 
+                    UPDATE prise 
                     SET ID_ESPECE = ?, ID_LEURRE = ?, ID_APPAT = ?, ID_TECHNIQUE = ?, TAILLE_CM = ?, POIDS_KG = ?, RELACHE = ?, PHOTO_CHEMIN = ?, LATITUDE = ?, LONGITUDE = ?, QUANTITE = ?, DATE_HEURE = ?
                     WHERE ID_PRISE = ?
                 ");
@@ -154,18 +154,18 @@ try {
     // =========================================================================
     // 3. CHARGEMENT DES LISTES ET PRÉPARATION DE L'AFFICHAGE
     // =========================================================================
-    $especes = $pdo->query("SELECT ID_ESPECE, NOM_COM, ICONE_CHEMIN FROM ESPECE ORDER BY NOM_COM")->fetchAll(PDO::FETCH_ASSOC);
-    $techniques = $pdo->query("SELECT ID_TECHNIQUE, NOM_TECHNIQUE FROM TECHNIQUE ORDER BY NOM_TECHNIQUE")->fetchAll(PDO::FETCH_ASSOC);
+    $especes = $pdo->query("SELECT ID_ESPECE, NOM_COM, ICONE_CHEMIN FROM espece ORDER BY NOM_COM")->fetchAll(PDO::FETCH_ASSOC);
+    $techniques = $pdo->query("SELECT ID_TECHNIQUE, NOM_TECHNIQUE FROM technique ORDER BY NOM_TECHNIQUE")->fetchAll(PDO::FETCH_ASSOC);
     
     // Récupération globale pour la boîte de pêche
-    $types_leurre = $pdo->query("SELECT * FROM TYPE_LEURRE")->fetchAll(PDO::FETCH_NUM); 
-    $types_appat = $pdo->query("SELECT * FROM TYPE_APPAT")->fetchAll(PDO::FETCH_NUM); 
+    $types_leurre = $pdo->query("SELECT * FROM type_leurre")->fetchAll(PDO::FETCH_NUM); 
+    $types_appat = $pdo->query("SELECT * FROM type_appat")->fetchAll(PDO::FETCH_NUM); 
 
-    $leurres = $pdo->prepare("SELECT ID_LEURRE, NOM_LEURRE, ID_TYPE, GRAMMAGE, COLORIS FROM LEURRE WHERE ID_UTILISATEUR = ? OR ID_UTILISATEUR IS NULL ORDER BY NOM_LEURRE");
+    $leurres = $pdo->prepare("SELECT ID_LEURRE, NOM_LEURRE, ID_TYPE, GRAMMAGE, COLORIS FROM leurre WHERE ID_UTILISATEUR = ? OR ID_UTILISATEUR IS NULL ORDER BY NOM_LEURRE");
     $leurres->execute([$id_user]);
     $liste_leurres = $leurres->fetchAll(PDO::FETCH_ASSOC);
 
-    $appats = $pdo->prepare("SELECT ID_APPAT, NOM_APPAT, ID_TYPE_APPAT FROM APPAT WHERE ID_UTILISATEUR = ? OR ID_UTILISATEUR IS NULL ORDER BY NOM_APPAT");
+    $appats = $pdo->prepare("SELECT ID_APPAT, NOM_APPAT, ID_TYPE_APPAT FROM appat WHERE ID_UTILISATEUR = ? OR ID_UTILISATEUR IS NULL ORDER BY NOM_APPAT");
     $appats->execute([$id_user]);
     $liste_appats = $appats->fetchAll(PDO::FETCH_ASSOC);
 

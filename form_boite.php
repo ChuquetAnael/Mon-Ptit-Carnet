@@ -20,18 +20,18 @@ try {
                 $coloris = trim($_POST['coloris'] ?? '');
 
                 if ($action_post === 'add') {
-                    $stmt = $pdo->prepare("INSERT INTO LEURRE (ID_UTILISATEUR, ID_TYPE, NOM_LEURRE, GRAMMAGE, COLORIS) VALUES (?, ?, ?, ?, ?)");
+                    $stmt = $pdo->prepare("INSERT INTO leurre (ID_UTILISATEUR, ID_TYPE, NOM_LEURRE, GRAMMAGE, COLORIS) VALUES (?, ?, ?, ?, ?)");
                     $stmt->execute([$_SESSION['user_id'], $id_categorie, $nom, $grammage, $coloris]);
                 } elseif ($action_post === 'edit' && $item_id) {
-                    $stmt = $pdo->prepare("UPDATE LEURRE SET ID_TYPE = ?, NOM_LEURRE = ?, GRAMMAGE = ?, COLORIS = ? WHERE ID_LEURRE = ? AND ID_UTILISATEUR = ?");
+                    $stmt = $pdo->prepare("UPDATE leurre SET ID_TYPE = ?, NOM_LEURRE = ?, GRAMMAGE = ?, COLORIS = ? WHERE ID_LEURRE = ? AND ID_UTILISATEUR = ?");
                     $stmt->execute([$id_categorie, $nom, $grammage, $coloris, $item_id, $_SESSION['user_id']]);
                 }
             } elseif ($choix_type === 'appat') {
                 if ($action_post === 'add') {
-                    $stmt = $pdo->prepare("INSERT INTO APPAT (ID_UTILISATEUR, ID_TYPE_APPAT, NOM_APPAT) VALUES (?, ?, ?)");
+                    $stmt = $pdo->prepare("INSERT INTO appat (ID_UTILISATEUR, ID_TYPE_APPAT, NOM_APPAT) VALUES (?, ?, ?)");
                     $stmt->execute([$_SESSION['user_id'], $id_categorie, $nom]);
                 } elseif ($action_post === 'edit' && $item_id) {
-                    $stmt = $pdo->prepare("UPDATE APPAT SET ID_TYPE_APPAT = ?, NOM_APPAT = ? WHERE ID_APPAT = ? AND ID_UTILISATEUR = ?");
+                    $stmt = $pdo->prepare("UPDATE appat SET ID_TYPE_APPAT = ?, NOM_APPAT = ? WHERE ID_APPAT = ? AND ID_UTILISATEUR = ?");
                     $stmt->execute([$id_categorie, $nom, $item_id, $_SESSION['user_id']]);
                 }
             }
@@ -51,9 +51,9 @@ try {
 
     if ($action === 'edit' && $id) {
         if ($type_item === 'leurre') {
-            $stmt = $pdo->prepare("SELECT ID_LEURRE as id, NOM_LEURRE as nom, ID_TYPE as id_cat, GRAMMAGE as grammage, COLORIS as coloris FROM LEURRE WHERE ID_LEURRE = ? AND ID_UTILISATEUR = ?");
+            $stmt = $pdo->prepare("SELECT ID_LEURRE as id, NOM_LEURRE as nom, ID_TYPE as id_cat, GRAMMAGE as grammage, COLORIS as coloris FROM leurre WHERE ID_LEURRE = ? AND ID_UTILISATEUR = ?");
         } else {
-            $stmt = $pdo->prepare("SELECT ID_APPAT as id, NOM_APPAT as nom, ID_TYPE_APPAT as id_cat FROM APPAT WHERE ID_APPAT = ? AND ID_UTILISATEUR = ?");
+            $stmt = $pdo->prepare("SELECT ID_APPAT as id, NOM_APPAT as nom, ID_TYPE_APPAT as id_cat FROM appat WHERE ID_APPAT = ? AND ID_UTILISATEUR = ?");
         }
         $stmt->execute([$id, $_SESSION['user_id']]);
         $item_data = $stmt->fetch(PDO::FETCH_ASSOC);
@@ -64,10 +64,10 @@ try {
     }
 
     // 3. CHARGEMENT DES CATÉGORIES POUR LES MENUS DÉROULANTS
-    $stmtTypesLeurres = $pdo->query("SELECT ID_TYPE, NOM_TYPE FROM TYPE_LEURRE ORDER BY NOM_TYPE ASC");
+    $stmtTypesLeurres = $pdo->query("SELECT ID_TYPE, NOM_TYPE FROM type_leurre ORDER BY NOM_TYPE ASC");
     $types_leurres = $stmtTypesLeurres->fetchAll(PDO::FETCH_ASSOC);
 
-    $stmtTypesAppats = $pdo->query("SELECT ID_TYPE_APPAT, NOM_TYPE_APPAT FROM TYPE_APPAT ORDER BY NOM_TYPE_APPAT ASC");
+    $stmtTypesAppats = $pdo->query("SELECT ID_TYPE_APPAT, NOM_TYPE_APPAT FROM type_appat ORDER BY NOM_TYPE_APPAT ASC");
     $types_appats = $stmtTypesAppats->fetchAll(PDO::FETCH_ASSOC);
 
 } catch (PDOException $e) {

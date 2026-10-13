@@ -14,7 +14,7 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
         $pdo = new PDO("mysql:host=$host;dbname=$dbname;charset=utf8", $user, $pass);
         $pdo->setAttribute(PDO::ATTR_ERRMODE, PDO::ERRMODE_EXCEPTION);
 
-        $stmt = $pdo->prepare("SELECT * FROM UTILISATEUR WHERE MAIL = :mail");
+        $stmt = $pdo->prepare("SELECT * FROM utilisateur WHERE MAIL = :mail");
         $stmt->execute(['mail' => $_POST['email']]);
         $utilisateur = $stmt->fetch(PDO::FETCH_ASSOC);
 

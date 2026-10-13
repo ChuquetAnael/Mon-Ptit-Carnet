@@ -103,7 +103,7 @@ if ($etape === 2 and $_SERVER["REQUEST_METHOD"] == "POST") {
             $id_spot = null;
             if ($s2['is_new_spot'] == '1' && !empty($s2['nouveau_nom_spot'])) {
                 $loc = ($s2['lat_final'] && $s2['lng_final']) ? $s2['lat_final'] . ', ' . $s2['lng_final'] : null;
-                $stmtSpot = $pdo->prepare("INSERT INTO SPOT (ID_UTILISATEUR, ID_TYPE_SPOT, NOM_SPOT, LOCALISATION) VALUES (?, ?, ?, ?)");
+                $stmtSpot = $pdo->prepare("INSERT INTO spot (ID_UTILISATEUR, ID_TYPE_SPOT, NOM_SPOT, LOCALISATION) VALUES (?, ?, ?, ?)");
                 $stmtSpot->execute([$id_user, $s2['nouveau_type_spot'], $s2['nouveau_nom_spot'], $loc]);
                 $id_spot = $pdo->lastInsertId();
             } elseif ($s2['id_spot'] !== 'new' && !empty($s2['id_spot'])) {
@@ -112,7 +112,7 @@ if ($etape === 2 and $_SERVER["REQUEST_METHOD"] == "POST") {
 
             // Insertion dans SESSION_P AVEC les données météo et marée
             $stmtSess = $pdo->prepare("
-                INSERT INTO SESSION_P (
+                INSERT INTO session_p (
                     ID_UTILISATEUR, ID_TYPE_SESSION, ID_SPOT, DATE_DEBUT, DATE_FIN, 
                     TEMPERATURE, PRESSION_HPA, VITESSE_VENT, DIREC_VENT, DESCRIP_CIEL, COEFF_MAREE, DESC_MAREE
                 ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
@@ -148,7 +148,7 @@ if ($etape === 3 and $_SERVER["REQUEST_METHOD"] == "POST") {
         $id_spot = null;
         if ($s2['is_new_spot'] == '1' && !empty($s2['nouveau_nom_spot'])) {
             $loc = ($s2['lat_final'] && $s2['lng_final']) ? $s2['lat_final'] . ', ' . $s2['lng_final'] : null;
-            $stmtSpot = $pdo->prepare("INSERT INTO SPOT (ID_UTILISATEUR, ID_TYPE_SPOT, NOM_SPOT, LOCALISATION) VALUES (?, ?, ?, ?)");
+            $stmtSpot = $pdo->prepare("INSERT INTO spot (ID_UTILISATEUR, ID_TYPE_SPOT, NOM_SPOT, LOCALISATION) VALUES (?, ?, ?, ?)");
             $stmtSpot->execute([$id_user, $s2['nouveau_type_spot'], $s2['nouveau_nom_spot'], $loc]);
             $id_spot = $pdo->lastInsertId();
         } elseif ($s2['id_spot'] !== 'new' && !empty($s2['id_spot'])) {
@@ -157,7 +157,7 @@ if ($etape === 3 and $_SERVER["REQUEST_METHOD"] == "POST") {
 
         // 2. Enregistrement de la Session (Avec Météo et Marée)
         $stmtSess = $pdo->prepare("
-            INSERT INTO SESSION_P (
+            INSERT INTO session_p (
                 ID_UTILISATEUR, ID_TYPE_SESSION, ID_SPOT, DATE_DEBUT, DATE_FIN,
                 TEMPERATURE, PRESSION_HPA, VITESSE_VENT, DIREC_VENT, DESCRIP_CIEL, COEFF_MAREE, DESC_MAREE
             ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
@@ -172,7 +172,7 @@ if ($etape === 3 and $_SERVER["REQUEST_METHOD"] == "POST") {
         // 3. Enregistrement des nouveaux leurres et appâts
         $map_new_leurres = []; 
         if (!empty($_POST['new_leurres'])) {
-            $stmtL = $pdo->prepare("INSERT INTO LEURRE (ID_UTILISATEUR, ID_TYPE, NOM_LEURRE, GRAMMAGE, COLORIS) VALUES (?, ?, ?, ?, ?)");
+            $stmtL = $pdo->prepare("INSERT INTO leurre (ID_UTILISATEUR, ID_TYPE, NOM_LEURRE, GRAMMAGE, COLORIS) VALUES (?, ?, ?, ?, ?)");
             foreach ($_POST['new_leurres'] as $temp_id => $l) {
                 $stmtL->execute([$id_user, $l['type'], $l['nom'], !empty($l['poids']) ? $l['poids'] : null, !empty($l['couleur']) ? $l['couleur'] : null]);
                 $map_new_leurres[$temp_id] = $pdo->lastInsertId();
@@ -180,7 +180,7 @@ if ($etape === 3 and $_SERVER["REQUEST_METHOD"] == "POST") {
         }
         $map_new_appats = [];
         if (!empty($_POST['new_appats'])) {
-            $stmtA = $pdo->prepare("INSERT INTO APPAT (ID_UTILISATEUR, ID_TYPE_APPAT, NOM_APPAT) VALUES (?, ?, ?)");
+            $stmtA = $pdo->prepare("INSERT INTO appat (ID_UTILISATEUR, ID_TYPE_APPAT, NOM_APPAT) VALUES (?, ?, ?)");
             foreach ($_POST['new_appats'] as $temp_id => $a) {
                 $stmtA->execute([$id_user, $a['type'], $a['nom']]);
                 $map_new_appats[$temp_id] = $pdo->lastInsertId();
@@ -190,7 +190,7 @@ if ($etape === 3 and $_SERVER["REQUEST_METHOD"] == "POST") {
         // 4. Enregistrement des Prises (Sans les colonnes météo globales)
         if (!empty($_POST['prises'])) {
             $stmtPrise = $pdo->prepare("
-                INSERT INTO PRISE (
+                INSERT INTO prise (
                     ID_SESSION, ID_ESPECE, ID_LEURRE, ID_APPAT, ID_TECHNIQUE, 
                     TAILLE_CM, POIDS_KG, RELACHE, PHOTO_CHEMIN, 
                     LATITUDE, LONGITUDE, QUANTITE, DATE_HEURE
@@ -243,24 +243,24 @@ if ($etape === 3 and $_SERVER["REQUEST_METHOD"] == "POST") {
 $session_data = $_SESSION['nouvelle_session'] ?? [];
 
 if ($etape === 2) {
-    $spots = $pdo->prepare("SELECT ID_SPOT, NOM_SPOT FROM SPOT WHERE ID_UTILISATEUR = ? ORDER BY NOM_SPOT");
+    $spots = $pdo->prepare("SELECT ID_SPOT, NOM_SPOT FROM spot WHERE ID_UTILISATEUR = ? ORDER BY NOM_SPOT");
     $spots->execute([$_SESSION['user_id']]);
     $spots = $spots->fetchAll(PDO::FETCH_ASSOC);
-    $types_spot = $pdo->query("SELECT ID_TYPE_SPOT, NOM_TYPE_SPOT FROM TYPE_SPOT ORDER BY NOM_TYPE_SPOT")->fetchAll(PDO::FETCH_ASSOC);
-    $types_session = $pdo->query("SELECT ID_TYPE_SESSION, NOM_TYPE_SESSION FROM TYPE_SESSION ORDER BY NOM_TYPE_SESSION")->fetchAll(PDO::FETCH_ASSOC);
+    $types_spot = $pdo->query("SELECT ID_TYPE_SPOT, NOM_TYPE_SPOT FROM type_spot ORDER BY NOM_TYPE_SPOT")->fetchAll(PDO::FETCH_ASSOC);
+    $types_session = $pdo->query("SELECT ID_TYPE_SESSION, NOM_TYPE_SESSION FROM type_session ORDER BY NOM_TYPE_SESSION")->fetchAll(PDO::FETCH_ASSOC);
 }
 
 if ($etape === 3) {
-    $especes = $pdo->query("SELECT ID_ESPECE, NOM_COM, ICONE_CHEMIN FROM ESPECE ORDER BY NOM_COM")->fetchAll(PDO::FETCH_ASSOC);
-    $techniques = $pdo->query("SELECT ID_TECHNIQUE, NOM_TECHNIQUE FROM TECHNIQUE ORDER BY NOM_TECHNIQUE")->fetchAll(PDO::FETCH_ASSOC);
-    $types_leurre = $pdo->query("SELECT * FROM TYPE_LEURRE")->fetchAll(PDO::FETCH_NUM); 
-    $types_appat = $pdo->query("SELECT * FROM TYPE_APPAT")->fetchAll(PDO::FETCH_NUM); 
+    $especes = $pdo->query("SELECT ID_ESPECE, NOM_COM, ICONE_CHEMIN FROM espece ORDER BY NOM_COM")->fetchAll(PDO::FETCH_ASSOC);
+    $techniques = $pdo->query("SELECT ID_TECHNIQUE, NOM_TECHNIQUE FROM technique ORDER BY NOM_TECHNIQUE")->fetchAll(PDO::FETCH_ASSOC);
+    $types_leurre = $pdo->query("SELECT * FROM type_leurre")->fetchAll(PDO::FETCH_NUM); 
+    $types_appat = $pdo->query("SELECT * FROM type_appat")->fetchAll(PDO::FETCH_NUM); 
 
-    $leurres = $pdo->prepare("SELECT ID_LEURRE, NOM_LEURRE, ID_TYPE, GRAMMAGE, COLORIS FROM LEURRE WHERE ID_UTILISATEUR = ? OR ID_UTILISATEUR IS NULL ORDER BY NOM_LEURRE");
+    $leurres = $pdo->prepare("SELECT ID_LEURRE, NOM_LEURRE, ID_TYPE, GRAMMAGE, COLORIS FROM leurre WHERE ID_UTILISATEUR = ? OR ID_UTILISATEUR IS NULL ORDER BY NOM_LEURRE");
     $leurres->execute([$_SESSION['user_id']]);
     $leurres = $leurres->fetchAll(PDO::FETCH_ASSOC);
 
-    $appats = $pdo->prepare("SELECT ID_APPAT, NOM_APPAT, ID_TYPE_APPAT FROM APPAT WHERE ID_UTILISATEUR = ? OR ID_UTILISATEUR IS NULL ORDER BY NOM_APPAT");
+    $appats = $pdo->prepare("SELECT ID_APPAT, NOM_APPAT, ID_TYPE_APPAT FROM appat WHERE ID_UTILISATEUR = ? OR ID_UTILISATEUR IS NULL ORDER BY NOM_APPAT");
     $appats->execute([$_SESSION['user_id']]);
     $appats = $appats->fetchAll(PDO::FETCH_ASSOC);
 

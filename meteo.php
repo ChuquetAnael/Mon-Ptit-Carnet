@@ -8,7 +8,7 @@ try {
     // Récupération de tous les spots de l'utilisateur qui ont des coordonnées GPS
     $stmtSpots = $pdo->prepare("
         SELECT ID_SPOT, NOM_SPOT, LOCALISATION 
-        FROM SPOT 
+        FROM spot 
         WHERE ID_UTILISATEUR = :id_user AND LOCALISATION IS NOT NULL AND LOCALISATION != ''
         ORDER BY NOM_SPOT ASC
     ");

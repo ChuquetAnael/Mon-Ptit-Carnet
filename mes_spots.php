@@ -7,18 +7,18 @@ try {
     // 1. GESTION DE LA CRÉATION D'UN SPOT
     if (isset($_POST['add_spot']) && !empty($_POST['nom_spot']) && !empty($_POST['id_type_spot'])) {$nom = trim($_POST['nom_spot']);$type = $_POST['id_type_spot'];$lat = $_POST['lat'] ?? '';$lng = $_POST['lng'] ?? '';$localisation = ($lat &&$lng) ? $lat . ', ' .$lng : null;
 
-        $stmt =$pdo->prepare("INSERT INTO SPOT (ID_UTILISATEUR, ID_TYPE_SPOT, NOM_SPOT, LOCALISATION) VALUES (?, ?, ?, ?)");
+        $stmt =$pdo->prepare("INSERT INTO spot (ID_UTILISATEUR, ID_TYPE_SPOT, NOM_SPOT, LOCALISATION) VALUES (?, ?, ?, ?)");
         $stmt->execute([$_SESSION['user_id'], $type,$nom, $localisation]);$message = "Spot ajouté avec succès !";
     }
 
     // 2. GESTION DE LA SUPPRESSION D'UN SPOT
     if (isset($_POST['delete_spot']) && !empty($_POST['id_spot'])) {
         // A. On délie le spot de toutes les sessions historiques
-        $stmtUpdate = $pdo->prepare("UPDATE SESSION_P SET ID_SPOT = NULL WHERE ID_SPOT = ?");
+        $stmtUpdate = $pdo->prepare("UPDATE session_p SET ID_SPOT = NULL WHERE ID_SPOT = ?");
         $stmtUpdate->execute([$_POST['id_spot']]);
 
         // B. On supprime définitivement le spot (en vérifiant l'appartenance à l'utilisateur)
-        $stmt = $pdo->prepare("DELETE FROM SPOT WHERE ID_SPOT = ? AND ID_UTILISATEUR = ?");
+        $stmt = $pdo->prepare("DELETE FROM spot WHERE ID_SPOT = ? AND ID_UTILISATEUR = ?");
         $stmt->execute([$_POST['id_spot'], $_SESSION['user_id']]);
         $message = "Spot supprimé. Les sessions qui y étaient liées affichent désormais 'Lieu non précisé'.";
     }
@@ -27,8 +27,8 @@ try {
     // Tous les spots de l'utilisateur
     $stmtSpots =$pdo->prepare("
         SELECT s.ID_SPOT, s.NOM_SPOT, s.LOCALISATION, t.NOM_TYPE_SPOT 
-        FROM SPOT s
-        LEFT JOIN TYPE_SPOT t ON s.ID_TYPE_SPOT = t.ID_TYPE_SPOT
+        FROM spot s
+        LEFT JOIN type_spot t ON s.ID_TYPE_SPOT = t.ID_TYPE_SPOT
         WHERE s.ID_UTILISATEUR = ?
         ORDER BY s.NOM_SPOT ASC
     ");
@@ -36,7 +36,7 @@ try {
     $mes_spots =$stmtSpots->fetchAll(PDO::FETCH_ASSOC);
 
     // Tous les types de milieux (pour le menu déroulant d'ajout)
-    $types_spot =$pdo->query("SELECT ID_TYPE_SPOT, NOM_TYPE_SPOT FROM TYPE_SPOT ORDER BY NOM_TYPE_SPOT")->fetchAll(PDO::FETCH_ASSOC);
+    $types_spot =$pdo->query("SELECT ID_TYPE_SPOT, NOM_TYPE_SPOT FROM type_spot ORDER BY NOM_TYPE_SPOT")->fetchAll(PDO::FETCH_ASSOC);
 
 } catch (PDOException $e) {
     die("Erreur de base de données : " . $e->getMessage());

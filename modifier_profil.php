@@ -9,7 +9,7 @@ try {
         $id_user = $_SESSION['user_id'];
         
         // 1. Mise à jour des textes
-        $stmt = $pdo->prepare("UPDATE UTILISATEUR SET PSEUDO = :pseudo, DESCRIPTION = :desc WHERE ID_UTILISATEUR = :id");
+        $stmt = $pdo->prepare("UPDATE utilisateur SET PSEUDO = :pseudo, DESCRIPTION = :desc WHERE ID_UTILISATEUR = :id");
         $stmt->execute([
             'pseudo' => $_POST['pseudo'],
             'desc' => $_POST['description'],
@@ -32,7 +32,7 @@ try {
                 $chemin_final = $dossier . $nom_unique;
                 
                 if (file_put_contents($chemin_final, $image_base64)) {
-                    $stmtImg = $pdo->prepare("UPDATE UTILISATEUR SET $colonne_bdd = :chemin WHERE ID_UTILISATEUR = :id");
+                    $stmtImg = $pdo->prepare("UPDATE utilisateur SET $colonne_bdd = :chemin WHERE ID_UTILISATEUR = :id");
                     $stmtImg->execute(['chemin' => $chemin_final, 'id' => $id_user]);
                 }
             }
@@ -53,7 +53,7 @@ try {
     }
 
     // Récupération des données pour pré-remplir le formulaire (et afficher la bannière/avatar actuelle)
-    $stmt = $pdo->prepare("SELECT PSEUDO, DESCRIPTION, PDP_CHEMIN, BANNIERE_CHEMIN FROM UTILISATEUR WHERE ID_UTILISATEUR = :id");
+    $stmt = $pdo->prepare("SELECT PSEUDO, DESCRIPTION, PDP_CHEMIN, BANNIERE_CHEMIN FROM utilisateur WHERE ID_UTILISATEUR = :id");
     $stmt->execute(['id' => $_SESSION['user_id']]);
     $profil = $stmt->fetch(PDO::FETCH_ASSOC);
 

@@ -9,11 +9,11 @@ try {
     // Suppression d'un leurre
     if (isset($_POST['delete_leurre']) && isset($_POST['id_leurre'])) {
         // A. On délie le leurre de toutes les prises historiques (on met à NULL)
-        $stmtUpdate = $pdo->prepare("UPDATE PRISE SET ID_LEURRE = NULL WHERE ID_LEURRE = ?");
+        $stmtUpdate = $pdo->prepare("UPDATE prise SET ID_LEURRE = NULL WHERE ID_LEURRE = ?");
         $stmtUpdate->execute([$_POST['id_leurre']]);
         
         // B. On supprime définitivement le leurre
-        $stmt = $pdo->prepare("DELETE FROM LEURRE WHERE ID_LEURRE = ? AND ID_UTILISATEUR = ?");
+        $stmt = $pdo->prepare("DELETE FROM leurre WHERE ID_LEURRE = ? AND ID_UTILISATEUR = ?");
         $stmt->execute([$_POST['id_leurre'], $_SESSION['user_id']]);
         $message = "Leurre supprimé avec succès. Les anciennes prises liées ont été conservées.";
     }
@@ -21,11 +21,11 @@ try {
     // Suppression d'un appât
     if (isset($_POST['delete_appat']) && isset($_POST['id_appat'])) {
         // A. On délie l'appât
-        $stmtUpdate = $pdo->prepare("UPDATE PRISE SET ID_APPAT = NULL WHERE ID_APPAT = ?");
+        $stmtUpdate = $pdo->prepare("UPDATE prise SET ID_APPAT = NULL WHERE ID_APPAT = ?");
         $stmtUpdate->execute([$_POST['id_appat']]);
         
         // B. On supprime l'appât
-        $stmt = $pdo->prepare("DELETE FROM APPAT WHERE ID_APPAT = ? AND ID_UTILISATEUR = ?");
+        $stmt = $pdo->prepare("DELETE FROM appat WHERE ID_APPAT = ? AND ID_UTILISATEUR = ?");
         $stmt->execute([$_POST['id_appat'], $_SESSION['user_id']]);
         $message = "Appât supprimé avec succès. Les anciennes prises liées ont été conservées.";
     }
@@ -34,8 +34,8 @@ try {
     // Récupération des leurres
     $stmtLeurres = $pdo->prepare("
         SELECT l.ID_LEURRE, l.NOM_LEURRE, l.GRAMMAGE, l.COLORIS, t.NOM_TYPE 
-        FROM LEURRE l
-        LEFT JOIN TYPE_LEURRE t ON l.ID_TYPE = t.ID_TYPE
+        FROM leurre l
+        LEFT JOIN type_leurre t ON l.ID_TYPE = t.ID_TYPE
         WHERE l.ID_UTILISATEUR = ?
         ORDER BY l.NOM_LEURRE ASC
     ");
@@ -45,8 +45,8 @@ try {
     // Récupération des appâts
     $stmtAppats = $pdo->prepare("
         SELECT a.ID_APPAT, a.NOM_APPAT, ta.NOM_TYPE_APPAT 
-        FROM APPAT a
-        LEFT JOIN TYPE_APPAT ta ON a.ID_TYPE_APPAT = ta.ID_TYPE_APPAT
+        FROM appat a
+        LEFT JOIN type_appat ta ON a.ID_TYPE_APPAT = ta.ID_TYPE_APPAT
         WHERE a.ID_UTILISATEUR = ?
         ORDER BY a.NOM_APPAT ASC
     ");

@@ -40,14 +40,14 @@ try {
     $pdo = new PDO("mysql:host=$host;dbname=$dbname;charset=utf8", $user, $pass);
     $pdo->setAttribute(PDO::ATTR_ERRMODE, PDO::ERRMODE_EXCEPTION);
 
-    $pdo->exec("CREATE TABLE IF NOT EXISTS CACHE_MAREE (
+    $pdo->exec("CREATE TABLE IF NOT EXISTS cache_maree (
         ID_PORT VARCHAR(100) NOT NULL,
         DATE_MAREE DATE NOT NULL,
         DONNEES_JSON MEDIUMTEXT NOT NULL,
         PRIMARY KEY (ID_PORT, DATE_MAREE)
     )");
 
-    $stmtSites = $pdo->prepare("SELECT DONNEES_JSON FROM CACHE_MAREE WHERE ID_PORT = 'LISTE_SITES'");
+    $stmtSites = $pdo->prepare("SELECT DONNEES_JSON FROM cache_maree WHERE ID_PORT = 'LISTE_SITES'");
     $stmtSites->execute();
     $cacheSites = $stmtSites->fetch(PDO::FETCH_ASSOC);
 
@@ -58,21 +58,21 @@ try {
         $url_sites = "https://api-maree.fr/sites?key=" . CLE_API_MAREE;
         $sites_json = callApiMaree($url_sites);
         
-        $stmtInsertSites = $pdo->prepare("INSERT INTO CACHE_MAREE (ID_PORT, DATE_MAREE, DONNEES_JSON) VALUES ('LISTE_SITES', '2099-12-31', ?)");
+        $stmtInsertSites = $pdo->prepare("INSERT INTO cache_maree (ID_PORT, DATE_MAREE, DONNEES_JSON) VALUES ('LISTE_SITES', '2099-12-31', ?)");
         $stmtInsertSites->execute([$sites_json]);
         $sites = json_decode($sites_json, true);
     }
 
     // Sécurité et purge du cache cassé
     if (isset($sites['error']) || isset($sites['message'])) {
-        $pdo->exec("DELETE FROM CACHE_MAREE WHERE ID_PORT = 'LISTE_SITES'");
+        $pdo->exec("DELETE FROM cache_maree WHERE ID_PORT = 'LISTE_SITES'");
         throw new Exception("L'API a renvoyé une erreur (Cache vidé) : " . json_encode($sites));
     }
 
     $list = $sites['data'] ?? $sites['sites'] ?? $sites;
     
     if (!is_array($list) || empty($list)) {
-        $pdo->exec("DELETE FROM CACHE_MAREE WHERE ID_PORT = 'LISTE_SITES'");
+        $pdo->exec("DELETE FROM cache_maree WHERE ID_PORT = 'LISTE_SITES'");
         throw new Exception("Format de la liste invalide ou vide. Réponse brute : " . substr(json_encode($sites), 0, 300));
     }
 
@@ -104,14 +104,14 @@ try {
     }
 
     if (!$closest_site) {
-         $pdo->exec("DELETE FROM CACHE_MAREE WHERE ID_PORT = 'LISTE_SITES'");
+         $pdo->exec("DELETE FROM cache_maree WHERE ID_PORT = 'LISTE_SITES'");
          throw new Exception("Aucun port n'a été trouvé avec des coordonnées. Réponse API : " . substr(json_encode($list), 0, 300));
     }
     
     $id_port = $closest_site['id'] ?? $closest_site['site_id'] ?? $closest_site['slug'] ?? $closest_site_key ?? '';
     $nom_port = $closest_site['name'] ?? $closest_site['site_name'] ?? $closest_site['nom'] ?? 'Port inconnu';
 
-    $stmt = $pdo->prepare("SELECT DONNEES_JSON FROM CACHE_MAREE WHERE ID_PORT = ? AND DATE_MAREE = ?");
+    $stmt = $pdo->prepare("SELECT DONNEES_JSON FROM cache_maree WHERE ID_PORT = ? AND DATE_MAREE = ?");
     $stmt->execute([$id_port, $date]);
     $cachePort = $stmt->fetch(PDO::FETCH_ASSOC);
 
@@ -127,7 +127,7 @@ try {
     $url_extrema = "https://api-maree.fr/tide-extrema?site={$id_port}&from={$date}&to={$date}&tz=Europe/Paris&key=" . CLE_API_MAREE;
     $response = callApiMaree($url_extrema);
     
-    $stmtInsert = $pdo->prepare("INSERT INTO CACHE_MAREE (ID_PORT, DATE_MAREE, DONNEES_JSON) VALUES (?, ?, ?)");
+    $stmtInsert = $pdo->prepare("INSERT INTO cache_maree (ID_PORT, DATE_MAREE, DONNEES_JSON) VALUES (?, ?, ?)");
     $stmtInsert->execute([$id_port, $date, $response]);
     
     $result = json_decode($response, true);

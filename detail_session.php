@@ -20,7 +20,7 @@ try {
     // A. Suppression de la Session complète
     if (isset($_POST['delete_session'])) {
         // Étape 1 : Récupérer toutes les photos liées à cette session
-        $stmtPhotos = $pdo->prepare("SELECT PHOTO_CHEMIN FROM PRISE WHERE ID_SESSION = ? AND PHOTO_CHEMIN IS NOT NULL");
+        $stmtPhotos = $pdo->prepare("SELECT PHOTO_CHEMIN FROM prise WHERE ID_SESSION = ? AND PHOTO_CHEMIN IS NOT NULL");
         $stmtPhotos->execute([$id_session]);
         $photos = $stmtPhotos->fetchAll(PDO::FETCH_COLUMN);
 
@@ -32,11 +32,11 @@ try {
         }
 
         // Étape 3 : Supprimer les prises en BDD
-        $stmtDelPrises = $pdo->prepare("DELETE FROM PRISE WHERE ID_SESSION = ?");
+        $stmtDelPrises = $pdo->prepare("DELETE FROM prise WHERE ID_SESSION = ?");
         $stmtDelPrises->execute([$id_session]);
 
         // Étape 4 : Supprimer la session (on revérifie l'ID_UTILISATEUR par sécurité)
-        $stmtDelSession = $pdo->prepare("DELETE FROM SESSION_P WHERE ID_SESSION = ? AND ID_UTILISATEUR = ?");
+        $stmtDelSession = $pdo->prepare("DELETE FROM session_p WHERE ID_SESSION = ? AND ID_UTILISATEUR = ?");
         $stmtDelSession->execute([$id_session, $id_user]);
 
         // Redirection vers le profil
@@ -51,8 +51,8 @@ try {
         // Vérifier que la prise appartient bien à une session de cet utilisateur
         $stmtCheck = $pdo->prepare("
             SELECT p.PHOTO_CHEMIN 
-            FROM PRISE p 
-            JOIN SESSION_P s ON p.ID_SESSION = s.ID_SESSION 
+            FROM prise p 
+            JOIN session_p s ON p.ID_SESSION = s.ID_SESSION 
             WHERE p.ID_PRISE = ? AND s.ID_UTILISATEUR = ?
         ");
         $stmtCheck->execute([$id_prise, $id_user]);
@@ -64,7 +64,7 @@ try {
                 unlink($photo_a_supprimer);
             }
             // Supprimer de la BDD
-            $stmtDel = $pdo->prepare("DELETE FROM PRISE WHERE ID_PRISE = ?");
+            $stmtDel = $pdo->prepare("DELETE FROM prise WHERE ID_PRISE = ?");
             $stmtDel->execute([$id_prise]);
             
             $message_succes = "Prise supprimée avec succès.";
@@ -77,9 +77,9 @@ try {
 
     $stmtSess = $pdo->prepare("
         SELECT s.*, sp.NOM_SPOT, sp.LOCALISATION, ts.NOM_TYPE_SESSION
-        FROM SESSION_P s
-        LEFT JOIN SPOT sp ON s.ID_SPOT = sp.ID_SPOT
-        LEFT JOIN TYPE_SESSION ts ON s.ID_TYPE_SESSION = ts.ID_TYPE_SESSION
+        FROM session_p s
+        LEFT JOIN spot sp ON s.ID_SPOT = sp.ID_SPOT
+        LEFT JOIN type_session ts ON s.ID_TYPE_SESSION = ts.ID_TYPE_SESSION
         WHERE s.ID_SESSION = :id_session AND s.ID_UTILISATEUR = :id_user
     ");
     $stmtSess->execute(['id_session' => $id_session, 'id_user' => $id_user]);
@@ -93,11 +93,11 @@ try {
     // Ajout de la colonne QUANTITE dans l'extraction
     $stmtPrises = $pdo->prepare("
         SELECT p.*, e.NOM_COM, e.ICONE_CHEMIN, l.NOM_LEURRE, a.NOM_APPAT, t.NOM_TECHNIQUE
-        FROM PRISE p
-        JOIN ESPECE e ON p.ID_ESPECE = e.ID_ESPECE
-        LEFT JOIN LEURRE l ON p.ID_LEURRE = l.ID_LEURRE
-        LEFT JOIN APPAT a ON p.ID_APPAT = a.ID_APPAT
-        LEFT JOIN TECHNIQUE t ON p.ID_TECHNIQUE = t.ID_TECHNIQUE
+        FROM prise p
+        JOIN espece e ON p.ID_ESPECE = e.ID_ESPECE
+        LEFT JOIN leurre l ON p.ID_LEURRE = l.ID_LEURRE
+        LEFT JOIN appat a ON p.ID_APPAT = a.ID_APPAT
+        LEFT JOIN technique t ON p.ID_TECHNIQUE = t.ID_TECHNIQUE
         WHERE p.ID_SESSION = :id_session
         ORDER BY p.DATE_HEURE ASC
     ");
