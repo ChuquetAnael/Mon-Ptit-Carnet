@@ -1,61 +1,49 @@
 <?php
 require_once './includes/auth_bdd.php';
 
-try {
-    $pdo = new PDO("mysql:host=$host;dbname=$dbname;charset=utf8", $user, $pass);
-    $pdo->setAttribute(PDO::ATTR_ERRMODE, PDO::ERRMODE_EXCEPTION);
+$pdo = db();
+$id_user = (int) $_SESSION['user_id'];
 
-    // 1. GESTION DE LA SUPPRESSION
-    // Suppression d'un leurre
-    if (isset($_POST['delete_leurre']) && isset($_POST['id_leurre'])) {
-        // A. On délie le leurre de toutes les prises historiques (on met à NULL)
-        $stmtUpdate = $pdo->prepare("UPDATE PRISE SET ID_LEURRE = NULL WHERE ID_LEURRE = ?");
-        $stmtUpdate->execute([$_POST['id_leurre']]);
-        
-        // B. On supprime définitivement le leurre
-        $stmt = $pdo->prepare("DELETE FROM LEURRE WHERE ID_LEURRE = ? AND ID_UTILISATEUR = ?");
-        $stmt->execute([$_POST['id_leurre'], $_SESSION['user_id']]);
-        $message = "Leurre supprimé avec succès. Les anciennes prises liées ont été conservées.";
+// 1. GESTION DE LA SUPPRESSION
+// On vérifie D'ABORD que l'élément appartient à l'utilisateur. Avant, n'importe quel membre
+// pouvait délier un leurre/appât (y compris le matériel commun) de toutes les prises du site.
+foreach ([
+    'leurre' => ['delete_leurre', 'id_leurre', 'leurre', 'ID_LEURRE', "Leurre supprimé avec succès. Les anciennes prises liées ont été conservées."],
+    'appat' => ['delete_appat', 'id_appat', 'appat', 'ID_APPAT', "Appât supprimé avec succès. Les anciennes prises liées ont été conservées."],
+] as [$bouton, $champ, $table, $colonne, $texte]) {
+    if (!isset($_POST[$bouton])) continue;
+    $id_item = id_ou_null($_POST[$champ] ?? null);
+    $stmtCheck = $pdo->prepare("SELECT 1 FROM $table WHERE $colonne = ? AND ID_UTILISATEUR = ?");
+    $stmtCheck->execute([$id_item, $id_user]);
+    if ($stmtCheck->fetchColumn()) {
+        $pdo->beginTransaction();
+        $pdo->prepare("UPDATE prise SET $colonne = NULL WHERE $colonne = ?")->execute([$id_item]);
+        $pdo->prepare("DELETE FROM $table WHERE $colonne = ? AND ID_UTILISATEUR = ?")->execute([$id_item, $id_user]);
+        $pdo->commit();
+        $message = $texte;
     }
-    
-    // Suppression d'un appât
-    if (isset($_POST['delete_appat']) && isset($_POST['id_appat'])) {
-        // A. On délie l'appât
-        $stmtUpdate = $pdo->prepare("UPDATE PRISE SET ID_APPAT = NULL WHERE ID_APPAT = ?");
-        $stmtUpdate->execute([$_POST['id_appat']]);
-        
-        // B. On supprime l'appât
-        $stmt = $pdo->prepare("DELETE FROM APPAT WHERE ID_APPAT = ? AND ID_UTILISATEUR = ?");
-        $stmt->execute([$_POST['id_appat'], $_SESSION['user_id']]);
-        $message = "Appât supprimé avec succès. Les anciennes prises liées ont été conservées.";
-    }
-
-    // 2. RÉCUPÉRATION DES DONNÉES (Uniquement le matériel privé de l'utilisateur)
-    // Récupération des leurres
-    $stmtLeurres = $pdo->prepare("
-        SELECT l.ID_LEURRE, l.NOM_LEURRE, l.GRAMMAGE, l.COLORIS, t.NOM_TYPE 
-        FROM LEURRE l
-        LEFT JOIN TYPE_LEURRE t ON l.ID_TYPE = t.ID_TYPE
-        WHERE l.ID_UTILISATEUR = ?
-        ORDER BY l.NOM_LEURRE ASC
-    ");
-    $stmtLeurres->execute([$_SESSION['user_id']]);
-    $mes_leurres = $stmtLeurres->fetchAll(PDO::FETCH_ASSOC);
-
-    // Récupération des appâts
-    $stmtAppats = $pdo->prepare("
-        SELECT a.ID_APPAT, a.NOM_APPAT, ta.NOM_TYPE_APPAT 
-        FROM APPAT a
-        LEFT JOIN TYPE_APPAT ta ON a.ID_TYPE_APPAT = ta.ID_TYPE_APPAT
-        WHERE a.ID_UTILISATEUR = ?
-        ORDER BY a.NOM_APPAT ASC
-    ");
-    $stmtAppats->execute([$_SESSION['user_id']]);
-    $mes_appats = $stmtAppats->fetchAll(PDO::FETCH_ASSOC);
-
-} catch (PDOException $e) {
-    die("Erreur de base de données : " . $e->getMessage());
 }
+
+// 2. RÉCUPÉRATION DES DONNÉES (Uniquement le matériel privé de l'utilisateur)
+$stmtLeurres = $pdo->prepare("
+    SELECT l.ID_LEURRE, l.NOM_LEURRE, l.GRAMMAGE, l.COLORIS, t.NOM_TYPE 
+    FROM leurre l
+    LEFT JOIN type_leurre t ON l.ID_TYPE = t.ID_TYPE
+    WHERE l.ID_UTILISATEUR = ?
+    ORDER BY l.NOM_LEURRE ASC
+");
+$stmtLeurres->execute([$id_user]);
+$mes_leurres = $stmtLeurres->fetchAll(PDO::FETCH_ASSOC);
+
+$stmtAppats = $pdo->prepare("
+    SELECT a.ID_APPAT, a.NOM_APPAT, ta.NOM_TYPE_APPAT 
+    FROM appat a
+    LEFT JOIN type_appat ta ON a.ID_TYPE_APPAT = ta.ID_TYPE_APPAT
+    WHERE a.ID_UTILISATEUR = ?
+    ORDER BY a.NOM_APPAT ASC
+");
+$stmtAppats->execute([$id_user]);
+$mes_appats = $stmtAppats->fetchAll(PDO::FETCH_ASSOC);
 ?>
 
 <!DOCTYPE html>
@@ -116,7 +104,7 @@ try {
         
         <?php if(isset($message)): ?>
             <div class="alert alert-success alert-dismissible fade show rounded-4 border-0 shadow-sm text-center" role="alert">
-                <?= htmlspecialchars($message) ?>
+                <?= e($message) ?>
                 <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
             </div>
         <?php endif; ?>
@@ -151,21 +139,22 @@ try {
                             <div class="card border-0 shadow-sm rounded-4">
                                 <div class="card-body p-3 d-flex justify-content-between align-items-center">
                                     <div>
-                                        <h6 class="mb-1 fw-bold text-dark"><?= htmlspecialchars($leurre['NOM_LEURRE']) ?></h6>
+                                        <h6 class="mb-1 fw-bold text-dark"><?= e($leurre['NOM_LEURRE']) ?></h6>
                                         <small class="text-muted d-block" style="font-size: 0.8rem;">
-                                            <?= htmlspecialchars($leurre['NOM_TYPE_LEURRE'] ?? 'Non classé') ?> 
-                                            <?php if(!empty($leurre['GRAMMAGE'])) echo ' • ' . htmlspecialchars($leurre['GRAMMAGE']) . 'g'; ?>
-                                            <?php if(!empty($leurre['COLORIS'])) echo ' • ' . htmlspecialchars($leurre['COLORIS']); ?>
+                                            <?= e($leurre['NOM_TYPE'] ?? 'Non classé') ?> 
+                                            <?php if(!empty($leurre['GRAMMAGE'])) echo ' • ' . e($leurre['GRAMMAGE']) . 'g'; ?>
+                                            <?php if(!empty($leurre['COLORIS'])) echo ' • ' . e($leurre['COLORIS']); ?>
                                         </small>
                                     </div>
                                     <div class="d-flex gap-2">
                                         <!-- Bouton Modifier (Redirigera vers la future page d'édition) -->
-                                        <a href="form_boite.php?action=edit&type=leurre&id=<?= $leurre['ID_LEURRE'] ?>" class="btn btn-sm btn-light text-primary rounded-circle d-flex align-items-center justify-content-center p-2">
+                                        <a href="form_boite.php?action=edit&type=leurre&id=<?= (int) $leurre['ID_LEURRE'] ?>" class="btn btn-sm btn-light text-primary rounded-circle d-flex align-items-center justify-content-center p-2">
                                             <span class="material-symbols-rounded" style="font-size: 20px;">edit</span>
                                         </a>
                                         <!-- Formulaire de Suppression -->
                                         <form method="POST" class="m-0" onsubmit="return confirm('Es-tu sûr de vouloir supprimer ce leurre ? Il disparaitra de ta boîte.');">
-                                            <input type="hidden" name="id_leurre" value="<?= $leurre['ID_LEURRE'] ?>">
+                                            <?= csrf_field() ?>
+                                            <input type="hidden" name="id_leurre" value="<?= (int) $leurre['ID_LEURRE'] ?>">
                                             <button type="submit" name="delete_leurre" class="btn btn-sm btn-light text-danger rounded-circle d-flex align-items-center justify-content-center p-2">
                                                 <span class="material-symbols-rounded" style="font-size: 20px;">delete</span>
                                             </button>
@@ -191,17 +180,18 @@ try {
                             <div class="card border-0 shadow-sm rounded-4">
                                 <div class="card-body p-3 d-flex justify-content-between align-items-center">
                                     <div>
-                                        <h6 class="mb-1 fw-bold text-dark"><?= htmlspecialchars($appat['NOM_APPAT']) ?></h6>
+                                        <h6 class="mb-1 fw-bold text-dark"><?= e($appat['NOM_APPAT']) ?></h6>
                                         <small class="text-muted d-block" style="font-size: 0.8rem;">
-                                            <?= htmlspecialchars($appat['NOM_TYPE_APPAT'] ?? 'Non classé') ?>
+                                            <?= e($appat['NOM_TYPE_APPAT'] ?? 'Non classé') ?>
                                         </small>
                                     </div>
                                     <div class="d-flex gap-2">
-                                        <a href="form_boite.php?action=edit&type=appat&id=<?= $appat['ID_APPAT'] ?>" class="btn btn-sm btn-light text-primary rounded-circle d-flex align-items-center justify-content-center p-2">
+                                        <a href="form_boite.php?action=edit&type=appat&id=<?= (int) $appat['ID_APPAT'] ?>" class="btn btn-sm btn-light text-primary rounded-circle d-flex align-items-center justify-content-center p-2">
                                             <span class="material-symbols-rounded" style="font-size: 20px;">edit</span>
                                         </a>
                                         <form method="POST" class="m-0" onsubmit="return confirm('Es-tu sûr de vouloir supprimer cet appât ?');">
-                                            <input type="hidden" name="id_appat" value="<?= $appat['ID_APPAT'] ?>">
+                                            <?= csrf_field() ?>
+                                            <input type="hidden" name="id_appat" value="<?= (int) $appat['ID_APPAT'] ?>">
                                             <button type="submit" name="delete_appat" class="btn btn-sm btn-light text-danger rounded-circle d-flex align-items-center justify-content-center p-2">
                                                 <span class="material-symbols-rounded" style="font-size: 20px;">delete</span>
                                             </button>

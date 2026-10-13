@@ -1,36 +1,32 @@
 <?php
 require_once './includes/auth_bdd.php';
 
-try {
-    $pdo = new PDO("mysql:host=$host;dbname=$dbname;charset=utf8", $user, $pass);
-    $pdo->setAttribute(PDO::ATTR_ERRMODE, PDO::ERRMODE_EXCEPTION);
+$pdo = db();
 
-    // 1. Récupération des poissons avec leurs tags (Requête principale)
-    $sql = "
-        SELECT e.ID_ESPECE, e.NOM_COM, e.NOM_SCIEN, e.TAILLE_MAX, e.POIDS_MAX, e.ICONE_CHEMIN, 
-               e.DESCRIPTION, e.HABITAT_INFO, e.REPRODUCTION,
-               GROUP_CONCAT(DISTINCT r.NOM_REPARTITION SEPARATOR ',') AS REPARTITIONS,
-               GROUP_CONCAT(DISTINCT h.NOM_HABIT SEPARATOR ',') AS HABITATS
-        FROM ESPECE e
-        LEFT JOIN SE_TROUVER st ON e.ID_ESPECE = st.ID_ESPECE
-        LEFT JOIN REPARTITION_MONDE r ON st.ID_REPARTITION = r.ID_REPARTITION
-        LEFT JOIN HABITER hb ON e.ID_ESPECE = hb.ID_ESPECE
-        LEFT JOIN HABITAT h ON hb.ID_HABIT = h.ID_HABIT
-        GROUP BY e.ID_ESPECE
-        ORDER BY e.NOM_COM ASC
-    ";
-    $stmt = $pdo->query($sql);
-    $especes = $stmt->fetchAll(PDO::FETCH_ASSOC);
+// 1. Récupération des poissons avec leurs tags (Requête principale)
+$sql = "
+    SELECT e.ID_ESPECE, e.NOM_COM, e.NOM_SCIEN, e.TAILLE_MAX, e.POIDS_MAX, e.ICONE_CHEMIN, 
+           e.DESCRIPTION, e.HABITAT_INFO, e.REPRODUCTION,
+           GROUP_CONCAT(DISTINCT r.NOM_REPARTITION SEPARATOR '|') AS REPARTITIONS,
+           GROUP_CONCAT(DISTINCT h.NOM_HABIT SEPARATOR '|') AS HABITATS
+    FROM espece e
+    LEFT JOIN se_trouver st ON e.ID_ESPECE = st.ID_ESPECE
+    LEFT JOIN repartition_monde r ON st.ID_REPARTITION = r.ID_REPARTITION
+    LEFT JOIN habiter hb ON e.ID_ESPECE = hb.ID_ESPECE
+    LEFT JOIN habitat h ON hb.ID_HABIT = h.ID_HABIT
+    GROUP BY e.ID_ESPECE
+    ORDER BY e.NOM_COM ASC
+";
+$especes = $pdo->query($sql)->fetchAll(PDO::FETCH_ASSOC);
 
-    // 2. Récupération dynamique des filtres pour les menus déroulants
-    $stmtHabitats = $pdo->query("SELECT DISTINCT NOM_HABIT FROM HABITAT ORDER BY NOM_HABIT ASC");
-    $liste_habitats = $stmtHabitats->fetchAll(PDO::FETCH_COLUMN);
+// 2. Récupération dynamique des filtres pour les menus déroulants
+$liste_habitats = $pdo->query("SELECT DISTINCT NOM_HABIT FROM habitat ORDER BY NOM_HABIT ASC")->fetchAll(PDO::FETCH_COLUMN);
+$liste_repartitions = $pdo->query("SELECT DISTINCT NOM_REPARTITION FROM repartition_monde ORDER BY NOM_REPARTITION ASC")->fetchAll(PDO::FETCH_COLUMN);
 
-    $stmtRepartitions = $pdo->query("SELECT DISTINCT NOM_REPARTITION FROM REPARTITION_MONDE ORDER BY NOM_REPARTITION ASC");
-    $liste_repartitions = $stmtRepartitions->fetchAll(PDO::FETCH_COLUMN);
-
-} catch (PDOException $e) {
-    die("Erreur de base de données : " . $e->getMessage());
+/** Minuscules UTF-8 (strtolower ne gère pas « É ») */
+function minuscule(?string $texte): string
+{
+    return mb_strtolower((string) $texte, 'UTF-8');
 }
 ?>
 
@@ -73,7 +69,7 @@ try {
                     <select id="habitatFilter" class="form-select bg-light border-0 rounded-pill text-secondary" style="font-size: 0.85rem;">
                         <option value="">Tous les milieux</option>
                         <?php foreach($liste_habitats as $hab): ?>
-                            <option value="<?= htmlspecialchars(strtolower($hab)) ?>"><?= htmlspecialchars($hab) ?></option>
+                            <option value="<?= e(minuscule($hab)) ?>"><?= e($hab) ?></option>
                         <?php endforeach; ?>
                     </select>
                 </div>
@@ -83,7 +79,7 @@ try {
                     <select id="repartFilter" class="form-select bg-light border-0 rounded-pill text-secondary" style="font-size: 0.85rem;">
                         <option value="">Toutes les zones</option>
                         <?php foreach($liste_repartitions as $rep): ?>
-                            <option value="<?= htmlspecialchars(strtolower($rep)) ?>"><?= htmlspecialchars($rep) ?></option>
+                            <option value="<?= e(minuscule($rep)) ?>"><?= e($rep) ?></option>
                         <?php endforeach; ?>
                     </select>
                 </div>
@@ -101,24 +97,24 @@ try {
             <?php foreach ($especes as $espece): ?>
                 <!-- On ajoute des attributs "data-*" pour stocker les informations invisibles utilisées par le JS -->
                 <div class="col-6 col-md-4 col-lg-3 fish-card-container" 
-                     data-nom="<?= htmlspecialchars(strtolower($espece['NOM_COM'])) ?>"
-                     data-habitats="<?= htmlspecialchars(strtolower($espece['HABITATS'] ?? '')) ?>"
-                     data-repartitions="<?= htmlspecialchars(strtolower($espece['REPARTITIONS'] ?? '')) ?>">
+                     data-nom="<?= e(minuscule($espece['NOM_COM'] . ' ' . $espece['NOM_SCIEN'])) ?>"
+                     data-habitats="<?= e(minuscule($espece['HABITATS'] ?? '')) ?>"
+                     data-repartitions="<?= e(minuscule($espece['REPARTITIONS'] ?? '')) ?>">
                     
                     <div class="card h-100 border-0 shadow-sm rounded-4 text-center p-3 d-flex flex-column align-items-center transition-hover" 
                          data-bs-toggle="modal" data-bs-target="#modalFish<?= $espece['ID_ESPECE'] ?>" style="cursor: pointer;">
                         
                         <div class="mb-3 d-flex align-items-center justify-content-center" style="height: 80px; width: 100%;">
                             <?php if (!empty($espece['ICONE_CHEMIN'])): ?>
-                                <img src="<?= htmlspecialchars($espece['ICONE_CHEMIN']) ?>" alt="<?= htmlspecialchars($espece['NOM_COM']) ?>" style="max-height: 100%; max-width: 100%; object-fit: contain;">
+                                <img src="<?= e($espece['ICONE_CHEMIN']) ?>" alt="<?= e($espece['NOM_COM']) ?>" style="max-height: 100%; max-width: 100%; object-fit: contain;">
                             <?php else: ?>
                                 <span class="material-symbols-rounded text-secondary" style="font-size: 40px;">set_meal</span>
                             <?php endif; ?>
                         </div>
 
                         <div class="mt-auto w-100">
-                            <h3 class="h6 fw-bold text-dark mb-0 text-truncate"><?= htmlspecialchars($espece['NOM_COM']) ?></h3>
-                            <small class="text-muted fst-italic text-truncate d-block" style="font-size: 0.65rem;"><?= htmlspecialchars($espece['NOM_SCIEN']) ?></small>
+                            <h3 class="h6 fw-bold text-dark mb-0 text-truncate"><?= e($espece['NOM_COM']) ?></h3>
+                            <small class="text-muted fst-italic text-truncate d-block" style="font-size: 0.65rem;"><?= e($espece['NOM_SCIEN']) ?></small>
                         </div>
                     </div>
                 </div>
@@ -128,48 +124,52 @@ try {
                     <div class="modal-dialog modal-dialog-centered modal-dialog-scrollable">
                         <div class="modal-content rounded-4 border-0 shadow">
                             <div class="modal-header border-0 pb-0">
-                                <h5 class="modal-title fw-bold text-dark h4"><?= htmlspecialchars($espece['NOM_COM']) ?></h5>
+                                <h5 class="modal-title fw-bold text-dark h4"><?= e($espece['NOM_COM']) ?></h5>
                                 <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Fermer"></button>
                             </div>
                             <div class="modal-body pt-1">
                                 <div class="text-center mb-3 bg-light rounded-4 py-3">
                                     <?php if (!empty($espece['ICONE_CHEMIN'])): ?>
-                                        <img src="<?= htmlspecialchars($espece['ICONE_CHEMIN']) ?>" alt="Icône" style="max-height: 120px; object-fit: contain;">
+                                        <img src="<?= e($espece['ICONE_CHEMIN']) ?>" alt="Icône" style="max-height: 120px; object-fit: contain;">
                                     <?php else: ?>
                                         <span class="material-symbols-rounded text-secondary" style="font-size: 60px;">set_meal</span>
                                     <?php endif; ?>
                                 </div>
                                 
-                                <p class="text-muted fst-italic text-center mb-4 border-bottom pb-3"><?= htmlspecialchars($espece['NOM_SCIEN']) ?></p>
+                                <p class="text-muted fst-italic text-center mb-4 border-bottom pb-3"><?= e($espece['NOM_SCIEN']) ?></p>
 
                                 <?php if(!empty($espece['TAILLE_MAX']) || !empty($espece['POIDS_MAX'])): ?>
                                     <div class="d-flex justify-content-around text-center mb-4">
+                                        <?php if (!empty($espece['TAILLE_MAX'])): ?>
                                         <div>
                                             <span class="d-block text-muted small text-uppercase fw-semibold">Taille Max</span>
-                                            <span class="text-primary fw-bold"><?= htmlspecialchars($espece['TAILLE_MAX']) ?> cm</span>
+                                            <span class="text-primary fw-bold"><?= e($espece['TAILLE_MAX']) ?> cm</span>
                                         </div>
+                                        <?php endif; ?>
+                                        <?php if (!empty($espece['POIDS_MAX'])): ?>
                                         <div>
                                             <span class="d-block text-muted small text-uppercase fw-semibold">Poids Max</span>
-                                            <span class="text-primary fw-bold"><?= htmlspecialchars($espece['POIDS_MAX']) ?> kg</span>
+                                            <span class="text-primary fw-bold"><?= e($espece['POIDS_MAX']) ?> kg</span>
                                         </div>
+                                        <?php endif; ?>
                                     </div>
                                 <?php endif; ?>
 
                                 <h6 class="fw-bold text-dark mt-3 d-flex align-items-center">
                                     <span class="material-symbols-rounded text-primary me-2">menu_book</span> Description
                                 </h6>
-                                <p class="small text-secondary text-justify"><?= nl2br(htmlspecialchars($espece['DESCRIPTION'] ?? 'Description non renseignée.')) ?></p>
+                                <p class="small text-secondary text-justify"><?= nl2br(e($espece['DESCRIPTION'] ?? 'Description non renseignée.')) ?></p>
 
                                 <h6 class="fw-bold text-dark mt-4 d-flex align-items-center">
                                     <span class="material-symbols-rounded text-primary me-2">home_pin</span> Habitat
                                 </h6>
-                                <p class="small text-secondary text-justify"><?= nl2br(htmlspecialchars($espece['HABITAT_INFO'] ?? 'Habitat non renseigné.')) ?></p>
+                                <p class="small text-secondary text-justify"><?= nl2br(e($espece['HABITAT_INFO'] ?? 'Habitat non renseigné.')) ?></p>
 
                                 <h6 class="fw-bold text-dark mt-4 d-flex align-items-center">
                                     <span class="material-symbols-rounded text-primary me-2">favorite</span> Reproduction
                                 </h6>
                                 <p class="small text-secondary text-justify mb-4">
-                                    <?= nl2br(htmlspecialchars($espece['REPRODUCTION'] ?? 'Reproduction non renseignée.')) ?>
+                                    <?= nl2br(e($espece['REPRODUCTION'] ?? 'Reproduction non renseignée.')) ?>
                                 </p>
 
                                 <div class="border-top pt-4 mt-2">
@@ -177,18 +177,18 @@ try {
                                     
                                     <div class="d-flex flex-wrap gap-2 mb-2">
                                         <?php if(!empty($espece['HABITATS'])): ?>
-                                            <?php foreach(explode(',', $espece['HABITATS']) as $tag): ?>
+                                            <?php foreach(explode('|', $espece['HABITATS']) as $tag): ?>
                                                 <span class="badge rounded-pill fw-normal px-3 py-2" style="background-color: rgba(0, 180, 219, 0.15); color: #0083b0; border: 1px solid rgba(0, 180, 219, 0.3); font-size: 0.75rem;">
-                                                    <?= htmlspecialchars(trim($tag)) ?>
+                                                    <?= e(trim($tag)) ?>
                                                 </span>
                                             <?php endforeach; ?>
                                         <?php endif; ?>
                                     </div>
                                     <div class="d-flex flex-wrap gap-2">
                                         <?php if(!empty($espece['REPARTITIONS'])): ?>
-                                            <?php foreach(explode(',', $espece['REPARTITIONS']) as $tag): ?>
+                                            <?php foreach(explode('|', $espece['REPARTITIONS']) as $tag): ?>
                                                 <span class="badge rounded-pill fw-normal px-3 py-2" style="background-color: rgba(30, 60, 114, 0.1); color: #1e3c72; border: 1px solid rgba(30, 60, 114, 0.2); font-size: 0.75rem;">
-                                                    <span class="material-symbols-rounded align-middle" style="font-size: 14px; margin-right: 3px;">public</span><?= htmlspecialchars(trim($tag)) ?>
+                                                    <span class="material-symbols-rounded align-middle" style="font-size: 14px; margin-right: 3px;">public</span><?= e(trim($tag)) ?>
                                                 </span>
                                             <?php endforeach; ?>
                                         <?php endif; ?>
@@ -216,17 +216,21 @@ try {
             const cards = document.querySelectorAll('.fish-card-container');
             const noResults = document.getElementById('no-results');
 
+            // Recherche insensible aux accents : "ecrevisse" trouve "Écrevisse", "sandre" trouve "Sander lucioperca"
+            const normaliser = t => (t || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase().trim();
+
             function filterCards() {
-                const searchTerm = searchInput.value.toLowerCase().trim();
+                const searchTerm = normaliser(searchInput.value);
                 const habitatTerm = habitatFilter.value;
                 const repartTerm = repartFilter.value;
                 let visibleCount = 0;
 
                 cards.forEach(card => {
                     // On récupère les attributs de la carte
-                    const nom = card.getAttribute('data-nom');
-                    const habitats = card.getAttribute('data-habitats');
-                    const repartitions = card.getAttribute('data-repartitions');
+                    const nom = normaliser(card.getAttribute('data-nom'));
+                    // Comparaison sur la liste exacte des tags (évite qu'un filtre "mer" attrape "mer / océan")
+                    const habitats = card.getAttribute('data-habitats').split('|');
+                    const repartitions = card.getAttribute('data-repartitions').split('|');
 
                     // Vérification des 3 conditions
                     const matchSearch = nom.includes(searchTerm);

@@ -1,82 +1,42 @@
 <?php
 require_once './includes/auth_bdd.php';
 
-$id_user = $_SESSION['user_id'];
+$id_user = (int) $_SESSION['user_id'];
 $message_erreur = '';
-$message_succes = '';
+$pdo = db();
 
-try {
-    $pdo = new PDO("mysql:host=$host;dbname=$dbname;charset=utf8", $user, $pass);
-    $pdo->setAttribute(PDO::ATTR_ERRMODE, PDO::ERRMODE_EXCEPTION);
+// VÉRIFICATION DES DROITS ADMINISTRATEUR (affichage du lien)
+$is_admin = est_admin($id_user);
 
-    // =========================================================================
-    // GESTION DE LA SUPPRESSION DU COMPTE
-    // =========================================================================
-    if (isset($_POST['delete_account']) && !empty($_POST['password_confirm'])) {
-        $password_fourni = $_POST['password_confirm'];
+// =========================================================================
+// GESTION DE LA SUPPRESSION DU COMPTE
+// =========================================================================
+if (isset($_POST['delete_account']) && !empty($_POST['password_confirm'])) {
+    $stmtUser = $pdo->prepare("SELECT MOT_DE_PASSE FROM utilisateur WHERE ID_UTILISATEUR = :id");
+    $stmtUser->execute(['id' => $id_user]);
+    $hash = $stmtUser->fetchColumn();
 
-        // 1. Récupérer les infos de l'utilisateur (Mot de passe + Photos de profil)
-        $stmtUser = $pdo->prepare("SELECT mot_de_passe, PDP_CHEMIN, BANNIERE_CHEMIN FROM UTILISATEUR WHERE ID_UTILISATEUR = :id");
-        $stmtUser->execute(['id' => $id_user]);
-        $userData = $stmtUser->fetch(PDO::FETCH_ASSOC);
+    // Uniquement password_verify : la comparaison en clair (mot de passe === hash) a été retirée
+    if ($hash && password_verify((string) $_POST['password_confirm'], $hash)) {
+        $pdo->beginTransaction();
+        $pdo->prepare("DELETE FROM prise WHERE ID_SESSION IN (SELECT ID_SESSION FROM session_p WHERE ID_UTILISATEUR = ?)")->execute([$id_user]);
+        $pdo->prepare("DELETE FROM session_p WHERE ID_UTILISATEUR = ?")->execute([$id_user]);
+        $pdo->prepare("DELETE FROM leurre WHERE ID_UTILISATEUR = ?")->execute([$id_user]);
+        $pdo->prepare("DELETE FROM appat WHERE ID_UTILISATEUR = ?")->execute([$id_user]);
+        $pdo->prepare("DELETE FROM spot WHERE ID_UTILISATEUR = ?")->execute([$id_user]);
+        $pdo->prepare("DELETE FROM admin WHERE ID_UTILISATEUR = ?")->execute([$id_user]);
+        $pdo->prepare("DELETE FROM utilisateur WHERE ID_UTILISATEUR = ?")->execute([$id_user]);
+        $pdo->commit();
 
-        if ($userData) {
-            // 2. Vérification du mot de passe (Supporte password_hash et le texte brut pour tes tests[cite: 8])
-            if (password_verify($password_fourni, $userData['mot_de_passe']) || $password_fourni === $userData['mot_de_passe']) {
-                
-                // --- A. SUPPRESSION DES FICHIERS PHYSIQUES (Photos) ---
-                $fichiers_a_supprimer = [];
-                if (!empty($userData['PDP_CHEMIN'])) $fichiers_a_supprimer[] = $userData['PDP_CHEMIN'];
-                if (!empty($userData['BANNIERE_CHEMIN'])) $fichiers_a_supprimer[] = $userData['BANNIERE_CHEMIN'];
+        // Fichiers supprimés une fois la base à jour (photos, avatar, bannière, fichiers orphelins)
+        supprimer_dossier_utilisateur($id_user);
 
-                // Récupérer toutes les photos de prises de l'utilisateur
-                $stmtPhotos = $pdo->prepare("
-                    SELECT p.PHOTO_CHEMIN 
-                    FROM PRISE p 
-                    JOIN SESSION_P s ON p.ID_SESSION = s.ID_SESSION 
-                    WHERE s.ID_UTILISATEUR = :id AND p.PHOTO_CHEMIN IS NOT NULL
-                ");
-                $stmtPhotos->execute(['id' => $id_user]);
-                while ($row = $stmtPhotos->fetch(PDO::FETCH_ASSOC)) {
-                    $fichiers_a_supprimer[] = $row['PHOTO_CHEMIN'];
-                }
-
-                // Exécuter la suppression des fichiers
-                foreach ($fichiers_a_supprimer as $fichier) {
-                    if (file_exists($fichier)) {
-                        unlink($fichier);
-                    }
-                }
-
-                // --- B. SUPPRESSION EN BASE DE DONNÉES (Ordre important pour les clés étrangères) ---
-                
-                // 1. Supprimer les prises (liées aux sessions de l'utilisateur)
-                $pdo->prepare("DELETE FROM PRISE WHERE ID_SESSION IN (SELECT ID_SESSION FROM SESSION_P WHERE ID_UTILISATEUR = ?)")->execute([$id_user]);
-                
-                // 2. Supprimer les sessions
-                $pdo->prepare("DELETE FROM SESSION_P WHERE ID_UTILISATEUR = ?")->execute([$id_user]);
-                
-                // 3. Supprimer le matériel et les spots
-                $pdo->prepare("DELETE FROM LEURRE WHERE ID_UTILISATEUR = ?")->execute([$id_user]);
-                $pdo->prepare("DELETE FROM APPAT WHERE ID_UTILISATEUR = ?")->execute([$id_user]);
-                $pdo->prepare("DELETE FROM SPOT WHERE ID_UTILISATEUR = ?")->execute([$id_user]);
-                
-                // 4. Supprimer l'utilisateur
-                $pdo->prepare("DELETE FROM UTILISATEUR WHERE ID_UTILISATEUR = ?")->execute([$id_user]);
-
-                // --- C. DÉCONNEXION ET REDIRECTION ---
-                session_destroy();
-                header('Location: index.php?msg=account_deleted');
-                exit();
-
-            } else {
-                $message_erreur = "Le mot de passe est incorrect. La suppression a été annulée.";
-            }
-        }
+        $_SESSION = [];
+        session_destroy();
+        header('Location: index.php?msg=account_deleted');
+        exit();
     }
-
-} catch (PDOException $e) {
-    die("Erreur de base de données : " . $e->getMessage());
+    $message_erreur = "Le mot de passe est incorrect. La suppression a été annulée.";
 }
 ?>
 
@@ -89,6 +49,7 @@ try {
     
     <?php include './includes/head.php'; ?>
 
+    <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:opsz,wght,FILL,GRAD@20..48,100..700,0..1,-50..200&icon_names=mail" />
     <style>
         .settings-card {
             transition: transform 0.2s ease, box-shadow 0.2s ease;
@@ -116,13 +77,30 @@ try {
                 <?php if(!empty($message_erreur)): ?>
                     <div class="alert alert-danger alert-dismissible fade show rounded-4 border-0 shadow-sm" role="alert">
                         <span class="material-symbols-rounded align-middle me-2">error</span>
-                        <?= htmlspecialchars($message_erreur) ?>
+                        <?= e($message_erreur) ?>
                         <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
                     </div>
                 <?php endif; ?>
 
+                <!-- Section : Administration (Visible uniquement pour les Admins) -->
+                <?php if($is_admin): ?>
+                    <h6 class="fw-bold text-danger text-uppercase mb-3 ms-2 mt-2" style="font-size: 0.8rem;">Administration</h6>
+                    
+                    <a href="admin.php" class="text-decoration-none">
+                        <div class="card border-0 shadow-sm rounded-4 mb-4 bg-white settings-card p-3 d-flex flex-row align-items-center justify-content-between border-start border-danger border-4">
+                            <div class="d-flex align-items-center">
+                                <div class="bg-danger bg-opacity-10 text-danger rounded-circle d-flex align-items-center justify-content-center me-3" style="width: 45px; height: 45px;">
+                                    <span class="material-symbols-rounded">admin_panel_settings</span>
+                                </div>
+                                <span class="text-danger fw-bold">Espace Administrateur</span>
+                            </div>
+                            <span class="material-symbols-rounded text-muted">chevron_right</span>
+                        </div>
+                    </a>
+                <?php endif; ?>
+
                 <!-- Section : Légal et Informations -->
-                <h6 class="fw-bold text-secondary text-uppercase mb-3 ms-2 mt-2" style="font-size: 0.8rem;">Informations</h6>
+                <h6 class="fw-bold text-secondary text-uppercase mb-3 ms-2 <?= $is_admin ? 'mt-4' : 'mt-2' ?>" style="font-size: 0.8rem;">Informations</h6>
                 
                 <a href="mentions_legales.php" class="text-decoration-none">
                     <div class="card border-0 shadow-sm rounded-4 mb-4 bg-white settings-card p-3 d-flex flex-row align-items-center justify-content-between">
@@ -143,6 +121,18 @@ try {
                                 <span class="material-symbols-rounded">policy</span>
                             </div>
                             <span class="text-dark fw-bold">Conditions Générales d'Utilisation</span>
+                        </div>
+                        <span class="material-symbols-rounded text-muted">chevron_right</span>
+                    </div>
+                </a>
+
+                <a href="contact.php" class="text-decoration-none">
+                    <div class="card border-0 shadow-sm rounded-4 mb-4 bg-white settings-card p-3 d-flex flex-row align-items-center justify-content-between">
+                        <div class="d-flex align-items-center">
+                            <div class="bg-primary bg-opacity-10 text-primary rounded-circle d-flex align-items-center justify-content-center me-3" style="width: 45px; height: 45px;">
+                                <span class="material-symbols-outlined">mail</span>
+                            </div>
+                            <span class="text-dark fw-bold">Nous Contacter</span>
                         </div>
                         <span class="material-symbols-rounded text-muted">chevron_right</span>
                     </div>
@@ -189,6 +179,7 @@ try {
         <div class="modal-dialog modal-dialog-centered">
             <div class="modal-content rounded-4 border-0 shadow">
                 <form method="POST">
+                    <?= csrf_field() ?>
                     <div class="modal-header border-0 pb-0 mt-2 mx-2">
                         <h5 class="modal-title text-danger fw-bold d-flex align-items-center" id="deleteModalLabel">
                             <span class="material-symbols-rounded me-2">warning</span> Zone de danger

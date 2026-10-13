@@ -17,14 +17,14 @@
                             <div class="collapse mb-4" id="collapseNewLeurre">
                                 <div class="card card-body border-0 shadow-sm rounded-4">
                                     <form id="form-new-leurre">
-                                        <input type="text" class="form-control bg-light border-0 mb-3" id="new-l-nom" placeholder="Nom (ex: Black Minnow)">
+                                        <input type="text" class="form-control bg-light border-0 mb-3" id="new-l-nom" maxlength="50" placeholder="Nom (ex: Black Minnow)">
                                         <select class="form-select bg-light border-0 mb-3" id="new-l-type">
                                             <option value="" selected disabled>Type de leurre...</option>
-                                            <?php foreach($types_leurre as$tl): ?><option value="<?= $tl[0] ?>"><?= htmlspecialchars($tl[1]) ?></option><?php endforeach; ?>
+                                            <?php foreach($types_leurre as $tl): ?><option value="<?= (int) $tl[0] ?>"><?= e($tl[1]) ?></option><?php endforeach; ?>
                                         </select>
                                         <div class="row g-2 mb-4">
                                             <div class="col-6"><input type="number" step="0.1" class="form-control bg-light border-0" id="new-l-poids" placeholder="Poids (g)"></div>
-                                            <div class="col-6"><input type="text" class="form-control bg-light border-0" id="new-l-couleur" placeholder="Coloris"></div>
+                                            <div class="col-6"><input type="text" class="form-control bg-light border-0" id="new-l-couleur" maxlength="50" placeholder="Coloris"></div>
                                         </div>
                                         <button type="button" class="btn btn-primary rounded-pill w-100 fw-semibold" onclick="saveNewLeurre()">Ajouter à la boîte</button>
                                     </form>
@@ -37,10 +37,10 @@
                             <div class="collapse mb-4" id="collapseNewAppat">
                                 <div class="card card-body border-0 shadow-sm rounded-4">
                                     <form id="form-new-appat">
-                                        <input type="text" class="form-control bg-light border-0 mb-3" id="new-a-nom" placeholder="Nom de l'appât">
+                                        <input type="text" class="form-control bg-light border-0 mb-3" id="new-a-nom" maxlength="50" placeholder="Nom de l'appât">
                                         <select class="form-select bg-light border-0 mb-4" id="new-a-type">
                                             <option value="" selected disabled>Catégorie...</option>
-                                            <?php foreach($types_appat as$ta): ?><option value="<?= $ta[0] ?>"><?= htmlspecialchars($ta[1]) ?></option><?php endforeach; ?>
+                                            <?php foreach($types_appat as $ta): ?><option value="<?= (int) $ta[0] ?>"><?= e($ta[1]) ?></option><?php endforeach; ?>
                                         </select>
                                         <button type="button" class="btn btn-primary rounded-pill w-100 fw-semibold" onclick="saveNewAppat()">Ajouter à la boîte</button>
                                     </form>

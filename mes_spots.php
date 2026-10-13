@@ -1,46 +1,62 @@
 <?php
 require_once './includes/auth_bdd.php';
 
-try {
-    $pdo = new PDO("mysql:host=$host;dbname=$dbname;charset=utf8", $user, $pass);$pdo->setAttribute(PDO::ATTR_ERRMODE, PDO::ERRMODE_EXCEPTION);
+$pdo = db();
+$id_user = (int) $_SESSION['user_id'];
 
-    // 1. GESTION DE LA CRÉATION D'UN SPOT
-    if (isset($_POST['add_spot']) && !empty($_POST['nom_spot']) && !empty($_POST['id_type_spot'])) {$nom = trim($_POST['nom_spot']);$type = $_POST['id_type_spot'];$lat = $_POST['lat'] ?? '';$lng = $_POST['lng'] ?? '';$localisation = ($lat &&$lng) ? $lat . ', ' .$lng : null;
+// 1. GESTION DE LA CRÉATION D'UN SPOT (coordonnées validées : ce sont des nombres, pas du texte libre)
+if (isset($_POST['add_spot'])) {
+    $nom = trim((string) ($_POST['nom_spot'] ?? ''));
+    $type = id_ou_null($_POST['id_type_spot'] ?? null);
+    $stmtType = $pdo->prepare("SELECT 1 FROM type_spot WHERE ID_TYPE_SPOT = ?");
+    $stmtType->execute([$type]);
 
-        $stmt =$pdo->prepare("INSERT INTO SPOT (ID_UTILISATEUR, ID_TYPE_SPOT, NOM_SPOT, LOCALISATION) VALUES (?, ?, ?, ?)");
-        $stmt->execute([$_SESSION['user_id'], $type,$nom, $localisation]);$message = "Spot ajouté avec succès !";
+    if ($nom === '' || mb_strlen($nom) > 50 || !$type || !$stmtType->fetchColumn()) {
+        $message_erreur = "Indique un nom (50 caractères max) et un type de milieu.";
+    } else {
+        $localisation = localisation_ou_null($_POST['lat'] ?? null, $_POST['lng'] ?? null);
+        $stmt = $pdo->prepare("INSERT INTO spot (ID_UTILISATEUR, ID_TYPE_SPOT, NOM_SPOT, LOCALISATION) VALUES (?, ?, ?, ?)");
+        $stmt->execute([$id_user, $type, $nom, $localisation]);
+        $message = "Spot ajouté avec succès !";
     }
+}
 
-    // 2. GESTION DE LA SUPPRESSION D'UN SPOT
-    if (isset($_POST['delete_spot']) && !empty($_POST['id_spot'])) {
-        // A. On délie le spot de toutes les sessions historiques
-        $stmtUpdate = $pdo->prepare("UPDATE SESSION_P SET ID_SPOT = NULL WHERE ID_SPOT = ?");
-        $stmtUpdate->execute([$_POST['id_spot']]);
-
-        // B. On supprime définitivement le spot (en vérifiant l'appartenance à l'utilisateur)
-        $stmt = $pdo->prepare("DELETE FROM SPOT WHERE ID_SPOT = ? AND ID_UTILISATEUR = ?");
-        $stmt->execute([$_POST['id_spot'], $_SESSION['user_id']]);
+// 2. GESTION DE LA SUPPRESSION D'UN SPOT (on vérifie d'abord qu'il appartient à l'utilisateur)
+if (isset($_POST['delete_spot'])) {
+    $id_spot = id_ou_null($_POST['id_spot'] ?? null);
+    $stmtCheck = $pdo->prepare("SELECT 1 FROM spot WHERE ID_SPOT = ? AND ID_UTILISATEUR = ?");
+    $stmtCheck->execute([$id_spot, $id_user]);
+    if ($stmtCheck->fetchColumn()) {
+        $pdo->beginTransaction();
+        $pdo->prepare("UPDATE session_p SET ID_SPOT = NULL WHERE ID_SPOT = ? AND ID_UTILISATEUR = ?")->execute([$id_spot, $id_user]);
+        $pdo->prepare("DELETE FROM spot WHERE ID_SPOT = ? AND ID_UTILISATEUR = ?")->execute([$id_spot, $id_user]);
+        $pdo->commit();
         $message = "Spot supprimé. Les sessions qui y étaient liées affichent désormais 'Lieu non précisé'.";
     }
-
-    // 3. RÉCUPÉRATION DES DONNÉES
-    // Tous les spots de l'utilisateur
-    $stmtSpots =$pdo->prepare("
-        SELECT s.ID_SPOT, s.NOM_SPOT, s.LOCALISATION, t.NOM_TYPE_SPOT 
-        FROM SPOT s
-        LEFT JOIN TYPE_SPOT t ON s.ID_TYPE_SPOT = t.ID_TYPE_SPOT
-        WHERE s.ID_UTILISATEUR = ?
-        ORDER BY s.NOM_SPOT ASC
-    ");
-    $stmtSpots->execute([$_SESSION['user_id']]);
-    $mes_spots =$stmtSpots->fetchAll(PDO::FETCH_ASSOC);
-
-    // Tous les types de milieux (pour le menu déroulant d'ajout)
-    $types_spot =$pdo->query("SELECT ID_TYPE_SPOT, NOM_TYPE_SPOT FROM TYPE_SPOT ORDER BY NOM_TYPE_SPOT")->fetchAll(PDO::FETCH_ASSOC);
-
-} catch (PDOException $e) {
-    die("Erreur de base de données : " . $e->getMessage());
 }
+
+// 3. RÉCUPÉRATION DES DONNÉES
+$stmtSpots = $pdo->prepare("
+    SELECT s.ID_SPOT, s.NOM_SPOT, s.LOCALISATION, t.NOM_TYPE_SPOT 
+    FROM spot s
+    LEFT JOIN type_spot t ON s.ID_TYPE_SPOT = t.ID_TYPE_SPOT
+    WHERE s.ID_UTILISATEUR = ?
+    ORDER BY s.NOM_SPOT ASC
+");
+$stmtSpots->execute([$id_user]);
+$mes_spots = $stmtSpots->fetchAll(PDO::FETCH_ASSOC);
+
+// Coordonnées converties en nombres pour la carte
+$spots_carte = [];
+foreach ($mes_spots as &$spot) {
+    $spot['coords'] = lire_localisation($spot['LOCALISATION']);
+    if ($spot['coords']) {
+        $spots_carte[] = ['nom' => $spot['NOM_SPOT'], 'type' => $spot['NOM_TYPE_SPOT'] ?? '', 'lat' => $spot['coords'][0], 'lng' => $spot['coords'][1]];
+    }
+}
+unset($spot);
+
+$types_spot = $pdo->query("SELECT ID_TYPE_SPOT, NOM_TYPE_SPOT FROM type_spot ORDER BY NOM_TYPE_SPOT")->fetchAll(PDO::FETCH_ASSOC);
 ?>
 
 <!DOCTYPE html>
@@ -103,9 +119,12 @@ try {
 
     <main class="container mt-4 mb-5 pb-5">
         
+        <?php if(isset($message_erreur)): ?>
+            <div class="alert alert-danger rounded-4 border-0 shadow-sm text-center" role="alert"><?= e($message_erreur) ?></div>
+        <?php endif; ?>
         <?php if(isset($message)): ?>
             <div class="alert alert-success alert-dismissible fade show rounded-4 border-0 shadow-sm text-center" role="alert">
-                <?= htmlspecialchars($message) ?>
+                <?= e($message) ?>
                 <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
             </div>
         <?php endif; ?>
@@ -126,23 +145,23 @@ try {
                     <div class="card border-0 shadow-sm rounded-4">
                         <div class="card-body p-3 d-flex justify-content-between align-items-center">
                             <div>
-                                <h6 class="mb-1 fw-bold text-dark"><?= htmlspecialchars($spot['NOM_SPOT']) ?></h6>
+                                <h6 class="mb-1 fw-bold text-dark"><?= e($spot['NOM_SPOT']) ?></h6>
                                 <span class="badge bg-success bg-opacity-10 text-success fw-medium">
-                                    <?= htmlspecialchars($spot['NOM_TYPE_SPOT'] ?? 'Non précisé') ?>
+                                    <?= e($spot['NOM_TYPE_SPOT'] ?? 'Non précisé') ?>
                                 </span>
                             </div>
                             <div class="d-flex gap-2">
                                 <!-- Bouton pour centrer la carte sur ce spot -->
-                                <?php if($spot['LOCALISATION']): ?>
-                                    <?php $coords = explode(', ',$spot['LOCALISATION']); ?>
-                                    <button class="btn btn-sm btn-light text-primary rounded-circle d-flex align-items-center justify-content-center p-2" onclick="focusMap(<?= $coords[0] ?>, <?=$coords[1] ?>)">
+                                <?php if($spot['coords']): ?>
+                                    <button class="btn btn-sm btn-light text-primary rounded-circle d-flex align-items-center justify-content-center p-2" onclick="focusMap(<?= (float) $spot['coords'][0] ?>, <?= (float) $spot['coords'][1] ?>)" aria-label="Centrer la carte sur ce spot">
                                         <span class="material-symbols-rounded" style="font-size: 20px;">my_location</span>
                                     </button>
                                 <?php endif; ?>
                                 
                                 <!-- Bouton Supprimer -->
                                 <form method="POST" class="m-0" onsubmit="return confirm('Es-tu sûr de vouloir supprimer ce spot ?');">
-                                    <input type="hidden" name="id_spot" value="<?= $spot['ID_SPOT'] ?>">
+                                    <?= csrf_field() ?>
+                                    <input type="hidden" name="id_spot" value="<?= (int) $spot['ID_SPOT'] ?>">
                                     <button type="submit" name="delete_spot" class="btn btn-sm btn-light text-danger rounded-circle d-flex align-items-center justify-content-center p-2">
                                         <span class="material-symbols-rounded" style="font-size: 20px;">delete</span>
                                     </button>
@@ -166,12 +185,13 @@ try {
                 </div>
                 <div class="modal-body">
                     <form action="" method="POST" id="formAddSpot">
+                        <?= csrf_field() ?>
                         <input type="hidden" name="lat" id="modal_lat">
                         <input type="hidden" name="lng" id="modal_lng">
                         
                         <div class="mb-3">
                             <label class="form-label text-secondary small fw-medium">Nom du spot</label>
-                            <input type="text" class="form-control bg-light border-0 p-3 rounded-3" name="nom_spot" placeholder="Ex: Pont de l'Europe, Lac secret..." required>
+                            <input type="text" class="form-control bg-light border-0 p-3 rounded-3" name="nom_spot" maxlength="50" placeholder="Ex: Pont de l'Europe, Lac secret..." required>
                         </div>
 
                         <div class="mb-4">
@@ -179,7 +199,7 @@ try {
                             <select class="form-select bg-light border-0 p-3 rounded-3" name="id_type_spot" required>
                                 <option value="" selected disabled>Choisir...</option>
                                 <?php foreach($types_spot as$ts): ?>
-                                    <option value="<?= $ts['ID_TYPE_SPOT'] ?>"><?= htmlspecialchars($ts['NOM_TYPE_SPOT']) ?></option>
+                                    <option value="<?= (int) $ts['ID_TYPE_SPOT'] ?>"><?= e($ts['NOM_TYPE_SPOT']) ?></option>
                                 <?php endforeach; ?>
                             </select>
                         </div>
@@ -216,32 +236,23 @@ try {
             L.control.zoom({ position: 'bottomright' }).addTo(map);
 
             // 2. Récupération des spots depuis le PHP pour afficher les marqueurs
-            const spots = <?= json_encode($mes_spots) ?>;
+            const spots = <?= js($spots_carte) ?>;
             let markerGroup = L.featureGroup().addTo(map);
+            const escapeHtml = v => String(v ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 
             spots.forEach(spot => {
-                if(spot.LOCALISATION) {
-                    let coords = spot.LOCALISATION.split(', ');
-                    if(coords.length === 2) {
-                        let lat = parseFloat(coords[0]);
-                        let lng = parseFloat(coords[1]);
-                        
-                        // Création du marqueur
-                        let marker = L.marker([lat, lng]).addTo(markerGroup);
-                        
-                        // Popup d'information au clic sur le marqueur
-                        marker.bindPopup(`
-                            <div class="text-center">
-                                <strong class="d-block text-dark">${spot.NOM_SPOT}</strong>
-                                <span class="small text-muted">${spot.NOM_TYPE_SPOT}</span>
-                            </div>
-                        `);
-                    }
-                }
+                const marker = L.marker([spot.lat, spot.lng]).addTo(markerGroup);
+                // Les noms saisis par l'utilisateur sont échappés avant d'entrer dans la popup HTML
+                marker.bindPopup(`
+                    <div class="text-center">
+                        <strong class="d-block text-dark">${escapeHtml(spot.nom)}</strong>
+                        <span class="small text-muted">${escapeHtml(spot.type)}</span>
+                    </div>
+                `);
             });
 
             // Si des spots existent, on centre la carte pour tous les afficher
-            if (spots.length > 0) {
+            if (spots.length > 0 && markerGroup.getLayers().length > 0) {
                 map.fitBounds(markerGroup.getBounds(), { padding: [30, 30], maxZoom: 14 });
             }
 

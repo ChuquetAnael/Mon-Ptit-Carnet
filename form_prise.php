@@ -1,211 +1,228 @@
 <?php
-session_start();
+require_once './includes/auth_bdd.php';
 
-if (!isset($_SESSION['user_id'])) {
-    header('Location: connexion.php');
-    exit();
-}
+$pdo = db();
+$id_user = (int) $_SESSION['user_id'];
+$action = ($_GET['action'] ?? 'add') === 'edit' ? 'edit' : 'add';
+$id_session = null;
+$id_prise = null;
+$prise_data = null;
+$photos_existantes = [];
+$erreur = null;
 
-require_once './bdd/env.php';
-require_once './BDD/BDD_session.php';
-
-try {
-    $pdo = new PDO("mysql:host=$host;dbname=$dbname;charset=utf8", $user, $pass);
-    $pdo->setAttribute(PDO::ATTR_ERRMODE, PDO::ERRMODE_EXCEPTION);
-
-    $id_user = $_SESSION['user_id'];
-    $action = $_GET['action'] ?? 'add';
-    $id_session = null;
-    $id_prise = null;
-    $prise_data = null;
-    $erreur = null;
-
-    // =========================================================================
-    // 1. VÉRIFICATION DES IDs ET RÉCUPÉRATION DES DONNÉES INITIALES
-    // =========================================================================
-    if ($action === 'edit' and isset($_GET['id']) and is_numeric($_GET['id'])) {
-        $id_prise = (int)$_GET['id'];
-        
-        $stmt = $pdo->prepare("
-            SELECT p.*, s.ID_UTILISATEUR, s.DATE_DEBUT 
-            FROM PRISE p
-            JOIN SESSION_P s ON p.ID_SESSION = s.ID_SESSION
-            WHERE p.ID_PRISE = ? AND s.ID_UTILISATEUR = ?
-        ");
-        $stmt->execute([$id_prise, $id_user]);
-        $prise_data = $stmt->fetch(PDO::FETCH_ASSOC);
-
-        if (!$prise_data) {
-            header('Location: profil.php');
-            exit();
-        }
-        $id_session = $prise_data['ID_SESSION'];
-    } 
-    elseif ($action === 'add' and isset($_GET['id_session']) and is_numeric($_GET['id_session'])) {
-        $id_session = (int)$_GET['id_session'];
-        
-        $stmtSess = $pdo->prepare("SELECT DATE_DEBUT FROM SESSION_P WHERE ID_SESSION = ? AND ID_UTILISATEUR = ?");
-        $stmtSess->execute([$id_session, $id_user]);
-        $session_actuelle = $stmtSess->fetch(PDO::FETCH_ASSOC);
-
-        if (!$session_actuelle) {
-            header('Location: profil.php');
-            exit();
-        }
-        $prise_data = [
-            'DATE_DEBUT' => $session_actuelle['DATE_DEBUT'],
-            'DATE_HEURE' => $session_actuelle['DATE_DEBUT'], 
-            'QUANTITE' => 1,
-            'RELACHE' => 1
-        ];
-    } else {
+// =========================================================================
+// 1. VÉRIFICATION DES IDs (la prise / session doit appartenir à l'utilisateur)
+// =========================================================================
+if ($action === 'edit' && ($id_prise = id_ou_null($_GET['id'] ?? null))) {
+    $stmt = $pdo->prepare("
+        SELECT p.*, s.ID_UTILISATEUR, s.DATE_DEBUT 
+        FROM prise p
+        JOIN session_p s ON p.ID_SESSION = s.ID_SESSION
+        WHERE p.ID_PRISE = ? AND s.ID_UTILISATEUR = ?
+    ");
+    $stmt->execute([$id_prise, $id_user]);
+    $prise_data = $stmt->fetch(PDO::FETCH_ASSOC);
+    if (!$prise_data) {
         header('Location: profil.php');
         exit();
     }
+    $id_session = (int) $prise_data['ID_SESSION'];
 
-    $date_base = substr($prise_data['DATE_DEBUT'], 0, 10); 
-
-    // =========================================================================
-    // 2. TRAITEMENT DU FORMULAIRE ENVOYÉ (POST)
-    // =========================================================================
-    if ($_SERVER['REQUEST_METHOD'] === 'POST') {
-        $id_espece = $_POST['id_espece'] ?? null;
-        $quantite = (!empty($_POST['quantite']) and is_numeric($_POST['quantite']) and $_POST['quantite'] > 0) ? (int)$_POST['quantite'] : 1;
-        $taille = !empty($_POST['taille']) ? str_replace(',', '.', $_POST['taille']) : null;
-        $poids = !empty($_POST['poids']) ? str_replace(',', '.', $_POST['poids']) : null;
-        $id_technique = !empty($_POST['id_technique']) ? $_POST['id_technique'] : null;
-        $relache = isset($_POST['relache']) ? 1 : 0;
-        
-        $id_leurre_final = !empty($_POST['id_leurre']) ? $_POST['id_leurre'] : null;
-        $id_appat_final = !empty($_POST['id_appat']) ? $_POST['id_appat'] : null;
-
-        $heure_post = !empty($_POST['heure']) ? $_POST['heure'] : '00:00';
-        $date_heure_finale = $date_base . ' ' . $heure_post . ':00';
-
-        if ($id_espece) {
-            
-            // A. Création à la volée des nouveaux leurres / appâts
-            if (strpos((string)$id_leurre_final, 'new_l_') === 0 and !empty($_POST['new_leurres'][$id_leurre_final])) {
-                $nl = $_POST['new_leurres'][$id_leurre_final];
-                $stmtL = $pdo->prepare("INSERT INTO LEURRE (ID_UTILISATEUR, ID_TYPE, NOM_LEURRE, GRAMMAGE, COLORIS) VALUES (?, ?, ?, ?, ?)");
-                $stmtL->execute([$id_user, $nl['type'], $nl['nom'], !empty($nl['poids']) ? $nl['poids'] : null, !empty($nl['couleur']) ? $nl['couleur'] : null]);
-                $id_leurre_final = $pdo->lastInsertId();
-            }
-
-            if (strpos((string)$id_appat_final, 'new_a_') === 0 and !empty($_POST['new_appats'][$id_appat_final])) {
-                $na = $_POST['new_appats'][$id_appat_final];
-                $stmtA = $pdo->prepare("INSERT INTO APPAT (ID_UTILISATEUR, ID_TYPE_APPAT, NOM_APPAT) VALUES (?, ?, ?)");
-                $stmtA->execute([$id_user, $na['type'], $na['nom']]);
-                $id_appat_final = $pdo->lastInsertId();
-            }
-
-            // B. Gestion de la photo
-            $photo_chemin = $action === 'edit' ? $prise_data['PHOTO_CHEMIN'] : null;
-            $lat = $action === 'edit' ? $prise_data['LATITUDE'] : null;
-            $lng = $action === 'edit' ? $prise_data['LONGITUDE'] : null;
-
-            if (isset($_FILES['photo']) and $_FILES['photo']['error'] === UPLOAD_ERR_OK) {
-                $dossier = 'uploads/user_' . $id_user . '/';
-                if (!is_dir($dossier)) mkdir($dossier, 0777, true);
-                
-                $chemin_upload = $dossier . uniqid() . '.jpg';
-                
-                if (move_uploaded_file($_FILES['photo']['tmp_name'], $chemin_upload)) {
-                    $exif = @exif_read_data($chemin_upload);
-                    if ($exif !== false) {
-                        if (isset($exif['GPSLatitude']) and isset($exif['GPSLongitude'])) {
-                            $lat = getGps($exif['GPSLatitude'], $exif['GPSLatitudeRef'] ?? 'N');
-                            $lng = getGps($exif['GPSLongitude'], $exif['GPSLongitudeRef'] ?? 'E');
-                        }
-                    }
-                    compresserImage($chemin_upload, $chemin_upload, 80, 1200);
-                    
-                    if ($action === 'edit' and !empty($prise_data['PHOTO_CHEMIN']) and file_exists($prise_data['PHOTO_CHEMIN'])) {
-                        unlink($prise_data['PHOTO_CHEMIN']);
-                    }
-                    $photo_chemin = $chemin_upload;
-                }
-            }
-
-            // C. Exécution SQL
-            if ($action === 'add') {
-                $stmtInsert = $pdo->prepare("
-                    INSERT INTO PRISE (ID_SESSION, ID_ESPECE, ID_LEURRE, ID_APPAT, ID_TECHNIQUE, TAILLE_CM, POIDS_KG, RELACHE, PHOTO_CHEMIN, LATITUDE, LONGITUDE, QUANTITE, DATE_HEURE) 
-                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-                ");
-                $stmtInsert->execute([$id_session, $id_espece, $id_leurre_final, $id_appat_final, $id_technique, $taille, $poids, $relache, $photo_chemin, $lat, $lng, $quantite, $date_heure_finale]);
-            } 
-            elseif ($action === 'edit') {
-                $stmtUpdate = $pdo->prepare("
-                    UPDATE PRISE 
-                    SET ID_ESPECE = ?, ID_LEURRE = ?, ID_APPAT = ?, ID_TECHNIQUE = ?, TAILLE_CM = ?, POIDS_KG = ?, RELACHE = ?, PHOTO_CHEMIN = ?, LATITUDE = ?, LONGITUDE = ?, QUANTITE = ?, DATE_HEURE = ?
-                    WHERE ID_PRISE = ?
-                ");
-                $stmtUpdate->execute([$id_espece, $id_leurre_final, $id_appat_final, $id_technique, $taille, $poids, $relache, $photo_chemin, $lat, $lng, $quantite, $date_heure_finale, $id_prise]);
-            }
-
-            header("Location: detail_session.php?id=" . $id_session);
-            exit();
-        } else {
-            $erreur = "L'espèce du poisson est obligatoire.";
-        }
+    $stmtPh = $pdo->prepare("SELECT ID_PHOTO, CHEMIN, STATUT_MODERATION FROM photo_prise WHERE ID_PRISE = ? ORDER BY ORDRE, ID_PHOTO");
+    $stmtPh->execute([$id_prise]);
+    $photos_existantes = $stmtPh->fetchAll(PDO::FETCH_ASSOC);
+} elseif ($action === 'add' && ($id_session = id_ou_null($_GET['id_session'] ?? null))) {
+    $stmtSess = $pdo->prepare("SELECT DATE_DEBUT FROM session_p WHERE ID_SESSION = ? AND ID_UTILISATEUR = ?");
+    $stmtSess->execute([$id_session, $id_user]);
+    $session_actuelle = $stmtSess->fetch(PDO::FETCH_ASSOC);
+    if (!$session_actuelle) {
+        header('Location: profil.php');
+        exit();
     }
-
-    // =========================================================================
-    // 3. CHARGEMENT DES LISTES ET PRÉPARATION DE L'AFFICHAGE
-    // =========================================================================
-    $especes = $pdo->query("SELECT ID_ESPECE, NOM_COM, ICONE_CHEMIN FROM ESPECE ORDER BY NOM_COM")->fetchAll(PDO::FETCH_ASSOC);
-    $techniques = $pdo->query("SELECT ID_TECHNIQUE, NOM_TECHNIQUE FROM TECHNIQUE ORDER BY NOM_TECHNIQUE")->fetchAll(PDO::FETCH_ASSOC);
-    
-    // Récupération globale pour la boîte de pêche
-    $types_leurre = $pdo->query("SELECT * FROM TYPE_LEURRE")->fetchAll(PDO::FETCH_NUM); 
-    $types_appat = $pdo->query("SELECT * FROM TYPE_APPAT")->fetchAll(PDO::FETCH_NUM); 
-
-    $leurres = $pdo->prepare("SELECT ID_LEURRE, NOM_LEURRE, ID_TYPE, GRAMMAGE, COLORIS FROM LEURRE WHERE ID_UTILISATEUR = ? OR ID_UTILISATEUR IS NULL ORDER BY NOM_LEURRE");
-    $leurres->execute([$id_user]);
-    $liste_leurres = $leurres->fetchAll(PDO::FETCH_ASSOC);
-
-    $appats = $pdo->prepare("SELECT ID_APPAT, NOM_APPAT, ID_TYPE_APPAT FROM APPAT WHERE ID_UTILISATEUR = ? OR ID_UTILISATEUR IS NULL ORDER BY NOM_APPAT");
-    $appats->execute([$id_user]);
-    $liste_appats = $appats->fetchAll(PDO::FETCH_ASSOC);
-
-    // Pré-sélection de l'espèce (Texte et Icône)
-    $selected_espece_name = "Rechercher une espèce...";
-    $selected_espece_icon = "";
-    if (!empty($prise_data['ID_ESPECE'])) {
-        foreach ($especes as $e) {
-            if ($e['ID_ESPECE'] == $prise_data['ID_ESPECE']) {
-                $selected_espece_name = $e['NOM_COM'];
-                $selected_espece_icon = $e['ICONE_CHEMIN'];
-                break;
-            }
-        }
-    }
-
-    // Pré-sélection du matériel
-    $selected_tackle_name = "Choisir dans la boîte...";
-    if (!empty($prise_data['ID_LEURRE'])) {
-        foreach ($liste_leurres as $l) {
-            if ($l['ID_LEURRE'] == $prise_data['ID_LEURRE']) {
-                $desc = $l['GRAMMAGE'] ? $l['GRAMMAGE'].'g' : '';
-                $col = $l['COLORIS'] ? $l['COLORIS'] : '';
-                $details = implode(' - ', array_filter([$desc, $col]));
-                $selected_tackle_name = $l['NOM_LEURRE'] . ($details ? " ($details)" : "");
-                break;
-            }
-        }
-    } elseif (!empty($prise_data['ID_APPAT'])) {
-        foreach ($liste_appats as $a) {
-            if ($a['ID_APPAT'] == $prise_data['ID_APPAT']) {
-                $selected_tackle_name = $a['NOM_APPAT'];
-                break;
-            }
-        }
-    }
-
-} catch (PDOException $e) {
-    die("Erreur : " . $e->getMessage());
+    $prise_data = [
+        'DATE_DEBUT' => $session_actuelle['DATE_DEBUT'],
+        'DATE_HEURE' => $session_actuelle['DATE_DEBUT'],
+        'QUANTITE' => 1,
+        'RELACHE' => 1
+    ];
+} else {
+    header('Location: profil.php');
+    exit();
 }
+
+$date_base = substr($prise_data['DATE_DEBUT'], 0, 10);
+
+// =========================================================================
+// 2. TRAITEMENT DU FORMULAIRE ENVOYÉ (POST)
+// =========================================================================
+if ($_SERVER['REQUEST_METHOD'] === 'POST') {
+    $id_espece = id_ou_null($_POST['id_espece'] ?? null);
+    $stmt = $pdo->prepare("SELECT 1 FROM espece WHERE ID_ESPECE = ?");
+    $stmt->execute([$id_espece]);
+
+    if (!$id_espece || !$stmt->fetchColumn()) {
+        $erreur = "L'espèce du poisson est obligatoire.";
+    } else {
+        $taille = nombre_ou_null($_POST['taille'] ?? null, 0, 1000);
+        $poids = nombre_ou_null($_POST['poids'] ?? null, 0, 999.99);
+        $quantite = min(id_ou_null($_POST['quantite'] ?? null) ?? 1, 999);
+        $id_technique = id_ou_null($_POST['id_technique'] ?? null);
+        if ($id_technique) {
+            $stmt = $pdo->prepare("SELECT 1 FROM technique WHERE ID_TECHNIQUE = ?");
+            $stmt->execute([$id_technique]);
+            if (!$stmt->fetchColumn()) $id_technique = null;
+        }
+        $type_valide = function (string $table, string $colonne, $id) use ($pdo): bool {
+            if (!id_ou_null($id)) return false;
+            $stmt = $pdo->prepare("SELECT 1 FROM $table WHERE $colonne = ?");
+            $stmt->execute([$id]);
+            return (bool) $stmt->fetchColumn();
+        };
+        $relache = isset($_POST['relache']) ? 1 : 0;
+        $heure = heure_ou_null($_POST['heure'] ?? null) ?? substr((string) $prise_data['DATE_HEURE'], 11, 5);
+        $date_heure_finale = $date_base . ' ' . ($heure ?: '00:00') . ':00';
+
+        $pdo->beginTransaction();
+
+        // A. Matériel : création à la volée, sinon vérification qu'il appartient à l'utilisateur (ou au matériel commun)
+        $id_leurre_final = $_POST['id_leurre'] ?? '';
+        if (preg_match('/^new_l_\d+$/', $id_leurre_final) && !empty($_POST['new_leurres'][$id_leurre_final]['nom']) && $type_valide('type_leurre', 'ID_TYPE', $_POST['new_leurres'][$id_leurre_final]['type'] ?? null)) {
+            $nl = $_POST['new_leurres'][$id_leurre_final];
+            $stmtL = $pdo->prepare("INSERT INTO leurre (ID_UTILISATEUR, ID_TYPE, NOM_LEURRE, GRAMMAGE, COLORIS) VALUES (?, ?, ?, ?, ?)");
+            $stmtL->execute([$id_user, id_ou_null($nl['type'] ?? null), mb_substr(trim($nl['nom']), 0, 50), nombre_ou_null($nl['poids'] ?? null, 0, 999), mb_substr(trim((string) ($nl['couleur'] ?? '')), 0, 50) ?: null]);
+            $id_leurre_final = (int) $pdo->lastInsertId();
+        } else {
+            $id_leurre_final = id_ou_null($id_leurre_final);
+            if ($id_leurre_final) {
+                $stmt = $pdo->prepare("SELECT 1 FROM leurre WHERE ID_LEURRE = ? AND (ID_UTILISATEUR = ? OR ID_UTILISATEUR IS NULL)");
+                $stmt->execute([$id_leurre_final, $id_user]);
+                if (!$stmt->fetchColumn()) $id_leurre_final = null;
+            }
+        }
+
+        $id_appat_final = $_POST['id_appat'] ?? '';
+        if (preg_match('/^new_a_\d+$/', $id_appat_final) && !empty($_POST['new_appats'][$id_appat_final]['nom']) && $type_valide('type_appat', 'ID_TYPE_APPAT', $_POST['new_appats'][$id_appat_final]['type'] ?? null)) {
+            $na = $_POST['new_appats'][$id_appat_final];
+            $stmtA = $pdo->prepare("INSERT INTO appat (ID_UTILISATEUR, ID_TYPE_APPAT, NOM_APPAT) VALUES (?, ?, ?)");
+            $stmtA->execute([$id_user, id_ou_null($na['type'] ?? null), mb_substr(trim($na['nom']), 0, 50)]);
+            $id_appat_final = (int) $pdo->lastInsertId();
+        } else {
+            $id_appat_final = id_ou_null($id_appat_final);
+            if ($id_appat_final) {
+                $stmt = $pdo->prepare("SELECT 1 FROM appat WHERE ID_APPAT = ? AND (ID_UTILISATEUR = ? OR ID_UTILISATEUR IS NULL)");
+                $stmt->execute([$id_appat_final, $id_user]);
+                if (!$stmt->fetchColumn()) $id_appat_final = null;
+            }
+        }
+
+        // B. Position : conservée en édition, mise à jour si une nouvelle photo contient du GPS
+        $lat = $action === 'edit' ? $prise_data['LATITUDE'] : null;
+        $lng = $action === 'edit' ? $prise_data['LONGITUDE'] : null;
+
+        // C. Enregistrement de la prise
+        if ($action === 'add') {
+            $stmtInsert = $pdo->prepare("
+                INSERT INTO prise (ID_SESSION, ID_ESPECE, ID_LEURRE, ID_APPAT, ID_TECHNIQUE, TAILLE_CM, POIDS_KG, RELACHE, LATITUDE, LONGITUDE, QUANTITE, DATE_HEURE) 
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            ");
+            $stmtInsert->execute([$id_session, $id_espece, $id_leurre_final, $id_appat_final, $id_technique, $taille === null ? null : (int) round($taille), $poids, $relache, $lat, $lng, $quantite, $date_heure_finale]);
+            $id_prise = (int) $pdo->lastInsertId();
+        }
+
+        // D. Photos : suppression des photos cochées puis ajout des nouvelles (6 max)
+        $a_supprimer = array_map('intval', (array) ($_POST['supprimer_photos'] ?? []));
+        $restantes = 0;
+        foreach ($photos_existantes as $ph) {
+            if (in_array((int) $ph['ID_PHOTO'], $a_supprimer, true)) {
+                $pdo->prepare("DELETE FROM photo_prise WHERE ID_PHOTO = ? AND ID_PRISE = ?")->execute([$ph['ID_PHOTO'], $id_prise]);
+                supprimer_fichier_utilisateur($ph['CHEMIN'], $id_user);
+            } else {
+                $restantes++;
+            }
+        }
+
+        $refusees = 0;
+        $stmtPhoto = $pdo->prepare("INSERT INTO photo_prise (ID_PRISE, CHEMIN, ORDRE) VALUES (?, ?, ?)");
+        foreach (isset($_FILES['photos']) ? fichiers_multiples($_FILES['photos']) : [] as $fichier) {
+            if ($fichier['error'] === UPLOAD_ERR_NO_FILE) continue;
+            if ($restantes >= PHOTOS_MAX_PAR_PRISE) { $refusees++; continue; }
+            $resultat = enregistrer_image_uploadee($fichier, $id_user);
+            if (!$resultat) { $refusees++; continue; }
+
+            $stmtPhoto->execute([$id_prise, $resultat['chemin'], $restantes++]);
+            $exif = $resultat['exif'];
+            if (is_array($exif) && isset($exif['GPSLatitude'], $exif['GPSLongitude'])) {
+                $lat = getGps($exif['GPSLatitude'], $exif['GPSLatitudeRef'] ?? 'N');
+                $lng = getGps($exif['GPSLongitude'], $exif['GPSLongitudeRef'] ?? 'E');
+            }
+        }
+
+        $stmtUpdate = $pdo->prepare("
+            UPDATE prise 
+            SET ID_ESPECE = ?, ID_LEURRE = ?, ID_APPAT = ?, ID_TECHNIQUE = ?, TAILLE_CM = ?, POIDS_KG = ?, RELACHE = ?, LATITUDE = ?, LONGITUDE = ?, QUANTITE = ?, DATE_HEURE = ?
+            WHERE ID_PRISE = ?
+        ");
+        $stmtUpdate->execute([$id_espece, $id_leurre_final, $id_appat_final, $id_technique, $taille === null ? null : (int) round($taille), $poids, $relache, $lat, $lng, $quantite, $date_heure_finale, $id_prise]);
+
+        $pdo->commit();
+
+        header("Location: detail_session.php?id=" . $id_session . ($refusees ? '&photos_refusees=' . $refusees : ''));
+        exit();
+    }
+}
+
+// =========================================================================
+// 3. CHARGEMENT DES LISTES ET PRÉPARATION DE L'AFFICHAGE
+// =========================================================================
+$especes = $pdo->query("SELECT ID_ESPECE, NOM_COM, ICONE_CHEMIN FROM espece ORDER BY NOM_COM")->fetchAll(PDO::FETCH_ASSOC);
+$techniques = $pdo->query("SELECT ID_TECHNIQUE, NOM_TECHNIQUE FROM technique ORDER BY NOM_TECHNIQUE")->fetchAll(PDO::FETCH_ASSOC);
+
+// Récupération globale pour la boîte de pêche
+$types_leurre = $pdo->query("SELECT * FROM type_leurre")->fetchAll(PDO::FETCH_NUM); 
+$types_appat = $pdo->query("SELECT * FROM type_appat")->fetchAll(PDO::FETCH_NUM); 
+
+$leurres = $pdo->prepare("SELECT ID_LEURRE, NOM_LEURRE, ID_TYPE, GRAMMAGE, COLORIS FROM leurre WHERE ID_UTILISATEUR = ? OR ID_UTILISATEUR IS NULL ORDER BY NOM_LEURRE");
+$leurres->execute([$id_user]);
+$liste_leurres = $leurres->fetchAll(PDO::FETCH_ASSOC);
+
+$appats = $pdo->prepare("SELECT ID_APPAT, NOM_APPAT, ID_TYPE_APPAT FROM appat WHERE ID_UTILISATEUR = ? OR ID_UTILISATEUR IS NULL ORDER BY NOM_APPAT");
+$appats->execute([$id_user]);
+$liste_appats = $appats->fetchAll(PDO::FETCH_ASSOC);
+
+// Pré-sélection de l'espèce (Texte et Icône)
+$selected_espece_name = "Rechercher une espèce...";
+$selected_espece_icon = "";
+if (!empty($prise_data['ID_ESPECE'])) {
+    foreach ($especes as $e) {
+        if ($e['ID_ESPECE'] == $prise_data['ID_ESPECE']) {
+            $selected_espece_name = $e['NOM_COM'];
+            $selected_espece_icon = $e['ICONE_CHEMIN'];
+            break;
+        }
+    }
+}
+
+// Pré-sélection du matériel
+$selected_tackle_name = "Choisir dans la boîte...";
+if (!empty($prise_data['ID_LEURRE'])) {
+    foreach ($liste_leurres as $l) {
+        if ($l['ID_LEURRE'] == $prise_data['ID_LEURRE']) {
+            $desc = $l['GRAMMAGE'] ? $l['GRAMMAGE'].'g' : '';
+            $col = $l['COLORIS'] ? $l['COLORIS'] : '';
+            $details = implode(' - ', array_filter([$desc, $col]));
+            $selected_tackle_name = $l['NOM_LEURRE'] . ($details ? " ($details)" : "");
+            break;
+        }
+    }
+} elseif (!empty($prise_data['ID_APPAT'])) {
+    foreach ($liste_appats as $a) {
+        if ($a['ID_APPAT'] == $prise_data['ID_APPAT']) {
+            $selected_tackle_name = $a['NOM_APPAT'];
+            break;
+        }
+    }
+}
+$heure_affichee = !empty($prise_data['DATE_HEURE']) ? date('H:i', strtotime($prise_data['DATE_HEURE'])) : date('H:i');
 ?>
 
 <!DOCTYPE html>
@@ -222,7 +239,7 @@ try {
 
     <!-- En-tête -->
     <header class="custom-header text-white text-center py-4 shadow-sm mb-4 position-relative" style="background: linear-gradient(135deg, #1e3c72 0%, #2a5298 100%); border-bottom-left-radius: 20px; border-bottom-right-radius: 20px;">
-        <a href="detail_session.php?id=<?= $id_session ?>" class="text-white position-absolute start-0 translate-middle-y ms-3 text-decoration-none" style="top: 50%;">
+        <a href="detail_session.php?id=<?= (int) $id_session ?>" class="text-white position-absolute start-0 translate-middle-y ms-3 text-decoration-none" style="top: 50%;">
             <span class="material-symbols-rounded">arrow_back_ios_new</span>
         </a>
         <h1 class="h4 mb-0 fw-semibold">
@@ -234,30 +251,43 @@ try {
         
         <?php if($erreur): ?>
             <div class="alert alert-danger rounded-4 border-0 shadow-sm text-center" role="alert">
-                <?= htmlspecialchars($erreur) ?>
+                <?= e($erreur) ?>
             </div>
         <?php endif; ?>
 
         <form action="" method="POST" enctype="multipart/form-data" id="main-form">
+            <?= csrf_field() ?>
 
             <!-- Conteneur invisible pour les nouveaux leurres -->
             <div id="new-items-container"></div>
 
-            <!-- PHOTO -->
+            <!-- PHOTOS (plusieurs par prise) -->
             <div class="card border-0 shadow-sm rounded-4 p-4 mb-4 bg-white text-center">
-                <h5 class="fw-bold mb-3 text-dark">Photo de la prise</h5>
-                
-                <?php if(!empty($prise_data['PHOTO_CHEMIN'])): ?>
-                    <img src="<?= htmlspecialchars($prise_data['PHOTO_CHEMIN']) ?>" class="rounded-4 mb-3 shadow-sm w-100" style="max-height: 250px; object-fit: cover;">
-                    <p class="small text-muted">Sélectionnez une nouvelle image ci-dessous pour remplacer l'actuelle.</p>
+                <h5 class="fw-bold mb-3 text-dark">Photos de la prise <small class="text-muted fw-normal">(<?= PHOTOS_MAX_PAR_PRISE ?> max)</small></h5>
+
+                <?php if (!empty($photos_existantes)): ?>
+                    <div class="d-flex flex-wrap gap-2 justify-content-center mb-3">
+                        <?php foreach ($photos_existantes as $ph): ?>
+                            <label class="position-relative d-block" style="cursor:pointer;">
+                                <img src="<?= e($ph['CHEMIN']) ?>" alt="Photo de la prise" class="rounded-3 shadow-sm border" style="width: 110px; height: 110px; object-fit: cover;">
+                                <?php if ($ph['STATUT_MODERATION'] !== 'visible'): ?>
+                                    <span class="badge bg-danger position-absolute bottom-0 start-0 m-1" style="font-size:0.6rem;">Masquée (modération)</span>
+                                <?php endif; ?>
+                                <span class="position-absolute top-0 end-0 m-1 bg-white rounded-pill px-2 py-1 shadow-sm small">
+                                    <input type="checkbox" class="form-check-input m-0 me-1" name="supprimer_photos[]" value="<?= (int) $ph['ID_PHOTO'] ?>">Suppr.
+                                </span>
+                            </label>
+                        <?php endforeach; ?>
+                    </div>
+                    <p class="small text-muted">Coche les photos à retirer, ou ajoutes-en d'autres ci-dessous.</p>
                 <?php endif; ?>
 
                 <label for="photo_upload" class="btn btn-light p-4 rounded-4 w-100 border-2 border-primary border-dashed d-flex flex-column align-items-center" style="border-style: dashed;">
                     <span class="material-symbols-rounded text-primary mb-2" style="font-size: 32px;">add_a_photo</span>
-                    <span class="fw-semibold text-primary"><?= !empty($prise_data['PHOTO_CHEMIN']) ? 'Remplacer la photo' : 'Ajouter une photo' ?></span>
-                    <input type="file" id="photo_upload" name="photo" accept="image/*" class="d-none" onchange="previewImage(this)">
+                    <span class="fw-semibold text-primary">Ajouter des photos</span>
+                    <input type="file" id="photo_upload" name="photos[]" multiple accept="image/jpeg,image/png,image/webp" class="d-none" onchange="previewImages(this)">
                 </label>
-                <div id="image_preview" class="mt-3"></div>
+                <div id="image_preview" class="d-flex flex-wrap gap-2 justify-content-center mt-3"></div>
             </div>
 
             <!-- DÉTAILS DU POISSON -->
@@ -270,9 +300,9 @@ try {
                     <button class="btn bg-light border-0 w-100 d-flex justify-content-between align-items-center text-start p-3 rounded-4 dropdown-toggle species-btn" type="button" data-bs-toggle="dropdown" aria-expanded="false">
                         <span class="selected-espece-text text-dark d-flex align-items-center fw-medium">
                             <?php if(!empty($selected_espece_icon)): ?>
-                                <img src="<?= htmlspecialchars($selected_espece_icon) ?>" style="width:25px; height:25px; object-fit:contain;" class="me-2">
+                                <img src="<?= e($selected_espece_icon) ?>" alt="" style="width:25px; height:25px; object-fit:contain;" class="me-2">
                             <?php endif; ?>
-                            <?= htmlspecialchars($selected_espece_name) ?>
+                            <?= e($selected_espece_name) ?>
                         </span>
                     </button>
                     <div class="dropdown-menu w-100 p-2 shadow-lg border-0 rounded-4 mt-1">
@@ -281,32 +311,32 @@ try {
                         </div>
                         <div class="espece-list" style="max-height: 250px; overflow-y: auto;">
                             <?php foreach($especes as $e): ?>
-                                <a class="dropdown-item d-flex align-items-center espece-option rounded-3 py-2 mb-1" href="#" data-value="<?= $e['ID_ESPECE'] ?>">
+                                <a class="dropdown-item d-flex align-items-center espece-option rounded-3 py-2 mb-1" href="#" data-value="<?= (int) $e['ID_ESPECE'] ?>" data-nom="<?= e($e['NOM_COM']) ?>">
                                     <?php if($e['ICONE_CHEMIN']): ?>
-                                        <img src="<?= htmlspecialchars($e['ICONE_CHEMIN']) ?>" style="width:35px; height:35px; object-fit:contain;" class="me-3">
+                                        <img src="<?= e($e['ICONE_CHEMIN']) ?>" alt="" style="width:35px; height:35px; object-fit:contain;" class="me-3">
                                     <?php else: ?>
                                         <span class="material-symbols-rounded text-muted me-3" style="font-size:35px;">set_meal</span>
                                     <?php endif; ?>
-                                    <span class="fw-medium text-dark"><?= htmlspecialchars($e['NOM_COM']) ?></span>
+                                    <span class="fw-medium text-dark"><?= e($e['NOM_COM']) ?></span>
                                 </a>
                             <?php endforeach; ?>
                         </div>
                     </div>
-                    <input type="hidden" name="id_espece" class="hidden-espece-input" value="<?= $prise_data['ID_ESPECE'] ?? '' ?>" required>
+                    <input type="hidden" name="id_espece" class="hidden-espece-input" value="<?= e($prise_data['ID_ESPECE'] ?? '') ?>" required>
                 </div>
 
                 <div class="row g-3 mb-2">
                     <div class="col-4">
                         <label class="form-label text-secondary small fw-bold text-uppercase">Quantité</label>
-                        <input type="number" min="1" class="form-control bg-light border-0 p-3 rounded-4 fw-bold text-primary text-center" name="quantite" value="<?= htmlspecialchars($prise_data['QUANTITE'] ?? '1') ?>">
+                        <input type="number" min="1" max="999" class="form-control bg-light border-0 p-3 rounded-4 fw-bold text-primary text-center" name="quantite" value="<?= e($prise_data['QUANTITE'] ?? '1') ?>">
                     </div>
                     <div class="col-4">
                         <label class="form-label text-secondary small fw-bold text-uppercase">Taille (cm)</label>
-                        <input type="number" step="0.5" class="form-control bg-light border-0 p-3 rounded-4" name="taille" placeholder="0.0" value="<?= htmlspecialchars($prise_data['TAILLE_CM'] ?? '') ?>">
+                        <input type="number" step="1" min="0" max="1000" inputmode="numeric" class="form-control bg-light border-0 p-3 rounded-4" name="taille" placeholder="0" value="<?= e($prise_data['TAILLE_CM'] ?? '') ?>">
                     </div>
                     <div class="col-4">
                         <label class="form-label text-secondary small fw-bold text-uppercase">Poids (kg)</label>
-                        <input type="number" step="0.01" class="form-control bg-light border-0 p-3 rounded-4" name="poids" placeholder="0.00" value="<?= htmlspecialchars($prise_data['POIDS_KG'] ?? '') ?>">
+                        <input type="number" step="0.01" min="0" max="999.99" inputmode="decimal" class="form-control bg-light border-0 p-3 rounded-4" name="poids" placeholder="0.00" value="<?= e($prise_data['POIDS_KG'] ?? '') ?>">
                     </div>
                 </div>
             </div>
@@ -318,20 +348,20 @@ try {
                 <label class="form-label text-secondary small fw-bold text-uppercase d-block">Appât / Leurre utilisé</label>
                 <button type="button" class="btn bg-light w-100 rounded-4 d-flex align-items-center justify-content-between p-3 border-0" onclick="openTackleBox()">
                     <span id="tackle-text" class="text-truncate fw-medium <?= !empty($prise_data['ID_LEURRE']) || !empty($prise_data['ID_APPAT']) ? 'text-dark' : 'text-muted' ?>" style="max-width:85%;">
-                        <?= htmlspecialchars($selected_tackle_name) ?>
+                        <?= e($selected_tackle_name) ?>
                     </span>
                     <span class="material-symbols-rounded text-primary">phishing</span>
                 </button>
-                <input type="hidden" name="id_leurre" id="hidden-leurre" value="<?= $prise_data['ID_LEURRE'] ?? '' ?>">
-                <input type="hidden" name="id_appat" id="hidden-appat" value="<?= $prise_data['ID_APPAT'] ?? '' ?>">
+                <input type="hidden" name="id_leurre" id="hidden-leurre" value="<?= e($prise_data['ID_LEURRE'] ?? '') ?>">
+                <input type="hidden" name="id_appat" id="hidden-appat" value="<?= e($prise_data['ID_APPAT'] ?? '') ?>">
 
                 <div class="mt-4">
                     <label class="form-label text-secondary small fw-bold text-uppercase">Technique</label>
                     <select class="form-select bg-light border-0 p-3 rounded-4" name="id_technique">
                         <option value="">Non précisée</option>
                         <?php foreach($techniques as $t): ?>
-                            <option value="<?= $t['ID_TECHNIQUE'] ?>" <?= ($prise_data['ID_TECHNIQUE'] ?? '') == $t['ID_TECHNIQUE'] ? 'selected' : '' ?>>
-                                <?= htmlspecialchars($t['NOM_TECHNIQUE']) ?>
+                            <option value="<?= (int) $t['ID_TECHNIQUE'] ?>" <?= ($prise_data['ID_TECHNIQUE'] ?? '') == $t['ID_TECHNIQUE'] ? 'selected' : '' ?>>
+                                <?= e($t['NOM_TECHNIQUE']) ?>
                             </option>
                         <?php endforeach; ?>
                     </select>
@@ -342,7 +372,7 @@ try {
             <div class="card border-0 shadow-sm rounded-4 p-4 mb-4 bg-white">
                 <div class="mb-4">
                     <label class="form-label text-secondary small fw-bold text-uppercase">Heure de capture</label>
-                    <input type="time" class="form-control bg-light border-0 p-3 rounded-4" name="heure" value="<?= date('H:i', strtotime($prise_data['DATE_HEURE'])) ?>" required>
+                    <input type="time" class="form-control bg-light border-0 p-3 rounded-4" name="heure" value="<?= e($heure_affichee) ?>" required>
                 </div>
 
                 <div class="form-check form-switch bg-light p-3 rounded-4 d-flex align-items-center">
@@ -366,24 +396,25 @@ try {
     
     <script>
 
-        // 1. PRÉVISUALISATION D'IMAGE
-        function previewImage(input) {
+        // 1. PRÉVISUALISATION DES IMAGES
+        function previewImages(input) {
             const preview = document.getElementById('image_preview');
             preview.innerHTML = '';
-            if (input.files && input.files[0]) {
-                const reader = new FileReader();
-                reader.onload = function(e) {
-                    preview.innerHTML = `<img src="${e.target.result}" class="rounded-4 shadow-sm w-100" style="max-height: 250px; object-fit: cover;">`;
-                }
-                reader.readAsDataURL(input.files[0]);
-            }
+            Array.from(input.files || []).forEach(file => {
+                const img = document.createElement('img');
+                img.src = URL.createObjectURL(file);
+                img.alt = 'Aperçu';
+                img.className = 'rounded-3 shadow-sm border';
+                img.style.cssText = 'width: 110px; height: 110px; object-fit: cover;';
+                preview.appendChild(img);
+            });
         }
 
         // 2. GESTION DE LA BOÎTE DE PÊCHE (AJOUT ET RENDU)
-        let leurres = <?php echo json_encode($liste_leurres, JSON_HEX_TAG | JSON_HEX_APOS | JSON_HEX_QUOT | JSON_HEX_AMP); ?>;
-        let appats = <?php echo json_encode($liste_appats, JSON_HEX_TAG | JSON_HEX_APOS | JSON_HEX_QUOT | JSON_HEX_AMP); ?>;
-        const typesLeurre = <?php echo json_encode($types_leurre, JSON_HEX_TAG | JSON_HEX_APOS | JSON_HEX_QUOT | JSON_HEX_AMP); ?>;
-        const typesAppat = <?php echo json_encode($types_appat, JSON_HEX_TAG | JSON_HEX_APOS | JSON_HEX_QUOT | JSON_HEX_AMP); ?>;
+        let leurres = <?= js($liste_leurres) ?>;
+        let appats = <?= js($liste_appats) ?>;
+        const typesLeurre = <?= js($types_leurre) ?>;
+        const typesAppat = <?= js($types_appat) ?>;
 
     </script>
     <script src="script/gestion_prise.js"></script>

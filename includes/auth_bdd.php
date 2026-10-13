@@ -1,8 +1,4 @@
 <?php
-session_start();
-if (!isset($_SESSION['user_id'])) {
-    header('Location: index.php');
-    exit();
-}
-require_once './bdd/env.php';
-?>
+// Pages réservées aux membres connectés : socle commun + contrôle de connexion.
+require_once __DIR__ . '/bootstrap.php';
+exiger_connexion();

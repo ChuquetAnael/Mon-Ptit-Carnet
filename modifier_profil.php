@@ -1,64 +1,51 @@
 <?php
 require_once './includes/auth_bdd.php';
 
-try {
-    $pdo = new PDO("mysql:host=$host;dbname=$dbname;charset=utf8", $user, $pass);
-    $pdo->setAttribute(PDO::ATTR_ERRMODE, PDO::ERRMODE_EXCEPTION);
+$pdo = db();
+$id_user = (int) $_SESSION['user_id'];
+$erreurs = [];
 
-    if ($_SERVER["REQUEST_METHOD"] == "POST") {
-        $id_user = $_SESSION['user_id'];
-        
-        // 1. Mise à jour des textes
-        $stmt = $pdo->prepare("UPDATE UTILISATEUR SET PSEUDO = :pseudo, DESCRIPTION = :desc WHERE ID_UTILISATEUR = :id");
-        $stmt->execute([
-            'pseudo' => $_POST['pseudo'],
-            'desc' => $_POST['description'],
-            'id' => $id_user
-        ]);
+$stmt = $pdo->prepare("SELECT PSEUDO, DESCRIPTION, PDP_CHEMIN, BANNIERE_CHEMIN FROM utilisateur WHERE ID_UTILISATEUR = :id");
+$stmt->execute(['id' => $id_user]);
+$profil = $stmt->fetch(PDO::FETCH_ASSOC);
 
-        // Création du sous-dossier unique par utilisateur
-        $dossier_upload = 'uploads/user_' . $id_user . '/';
-        if (!is_dir($dossier_upload)) {
-            mkdir($dossier_upload, 0777, true);
+if ($_SERVER["REQUEST_METHOD"] == "POST") {
+    $pseudo = trim((string) ($_POST['pseudo'] ?? ''));
+    $description = trim((string) ($_POST['description'] ?? ''));
+
+    if (mb_strlen($pseudo) < 2 || mb_strlen($pseudo) > 50) $erreurs[] = "Le pseudo doit contenir entre 2 et 50 caractères.";
+    if (mb_strlen($description) > 255) $erreurs[] = "La description est limitée à 255 caractères.";
+
+    // Images recadrées (Cropper.js) : décodées, vérifiées puis ré-encodées côté serveur
+    $nouvelles_images = [];
+    foreach (['pdp_cropped' => ['PDP_CHEMIN', 'pdp', 400], 'banniere_cropped' => ['BANNIERE_CHEMIN', 'ban', 1050]] as $champ => [$colonne, $prefixe, $largeur]) {
+        if (empty($_POST[$champ])) continue;
+        $chemin = enregistrer_image_base64((string) $_POST[$champ], $id_user, $prefixe, $largeur);
+        if ($chemin) {
+            $nouvelles_images[$colonne] = $chemin;
+        } else {
+            $erreurs[] = "Une des images envoyées est invalide ou trop lourde.";
         }
+    }
 
-        // 2. Fonction simplifiée pour décoder et sauvegarder le Base64 fourni par Cropper.js
-        function sauvegarderBase64($base64_string, $dossier, $prefixe, $id_user, $pdo, $colonne_bdd) {
-            $image_parts = explode(";base64,", $base64_string);
-            if (count($image_parts) == 2) {
-                $image_base64 = base64_decode($image_parts[1]);
-                // On force le format JPG et on garantit un nom unique
-                $nom_unique = uniqid() . '_' . $prefixe . '_' . $id_user . '.jpg';
-                $chemin_final = $dossier . $nom_unique;
-                
-                if (file_put_contents($chemin_final, $image_base64)) {
-                    $stmtImg = $pdo->prepare("UPDATE UTILISATEUR SET $colonne_bdd = :chemin WHERE ID_UTILISATEUR = :id");
-                    $stmtImg->execute(['chemin' => $chemin_final, 'id' => $id_user]);
-                }
-            }
+    if (!$erreurs) {
+        $pdo->prepare("UPDATE utilisateur SET PSEUDO = :pseudo, DESCRIPTION = :descr WHERE ID_UTILISATEUR = :id")
+            ->execute(['pseudo' => $pseudo, 'descr' => $description !== '' ? $description : null, 'id' => $id_user]);
+        $_SESSION['user_pseudo'] = $pseudo;
+
+        foreach ($nouvelles_images as $colonne => $chemin) {
+            // $colonne vient de la liste ci-dessus (jamais de l'utilisateur)
+            $pdo->prepare("UPDATE utilisateur SET $colonne = :chemin WHERE ID_UTILISATEUR = :id")->execute(['chemin' => $chemin, 'id' => $id_user]);
+            supprimer_fichier_utilisateur($profil[$colonne], $id_user); // l'ancienne image ne traîne plus sur le disque
         }
-
-        // 3. Sauvegarde de la Photo de profil si recadrée
-        if (!empty($_POST['pdp_cropped'])) {
-            sauvegarderBase64($_POST['pdp_cropped'], $dossier_upload, 'pdp', $id_user, $pdo, 'PDP_CHEMIN');
-        }
-
-        // 4. Sauvegarde de la Bannière si recadrée
-        if (!empty($_POST['banniere_cropped'])) {
-            sauvegarderBase64($_POST['banniere_cropped'], $dossier_upload, 'ban', $id_user, $pdo, 'BANNIERE_CHEMIN');
-        }
-
         header('Location: profil.php');
         exit();
     }
 
-    // Récupération des données pour pré-remplir le formulaire (et afficher la bannière/avatar actuelle)
-    $stmt = $pdo->prepare("SELECT PSEUDO, DESCRIPTION, PDP_CHEMIN, BANNIERE_CHEMIN FROM UTILISATEUR WHERE ID_UTILISATEUR = :id");
-    $stmt->execute(['id' => $_SESSION['user_id']]);
-    $profil = $stmt->fetch(PDO::FETCH_ASSOC);
-
-} catch (PDOException $e) {
-    die("Erreur : " . $e->getMessage());
+    // Erreur : on supprime les images fraîchement créées et on réaffiche le formulaire
+    foreach ($nouvelles_images as $chemin) supprimer_fichier_utilisateur($chemin, $id_user);
+    $profil['PSEUDO'] = $pseudo;
+    $profil['DESCRIPTION'] = $description;
 }
 ?>
 
@@ -79,7 +66,7 @@ try {
 <body class="bg-light">
 
     <!-- BANNIÈRE RESPONSIVE (Reprise du profil) -->
-    <header class="profile-banner-responsive" <?php if(!empty($profil['BANNIERE_CHEMIN'])) echo 'style="background-image: url(\'' . htmlspecialchars($profil['BANNIERE_CHEMIN']) . '\');"'; ?>>
+    <header class="profile-banner-responsive" <?php if(!empty($profil['BANNIERE_CHEMIN'])) echo 'style="background-image: url(\'' . e($profil['BANNIERE_CHEMIN']) . '\');"'; ?>>
         
         <!-- BOUTON RETOUR (Design de la roue crantée mais à gauche) -->
         <a href="profil.php" class="settings-btn" style="left: 20px; right: auto;" title="Retour au profil">
@@ -89,7 +76,7 @@ try {
         <!-- PHOTO DE PROFIL -->
         <div class="avatar-wrapper">
             <?php if(!empty($profil['PDP_CHEMIN'])): ?>
-                <img src="<?= htmlspecialchars($profil['PDP_CHEMIN']) ?>" alt="Photo de profil" class="avatar-circle">
+                <img src="<?= e($profil['PDP_CHEMIN']) ?>" alt="Photo de profil" class="avatar-circle">
             <?php else: ?>
                 <div class="avatar-circle">
                     <span class="material-symbols-rounded">person</span>
@@ -110,6 +97,10 @@ try {
                 <!-- CARTE DU FORMULAIRE -->
                 <div class="card border-0 shadow-sm rounded-4 p-4 p-md-5 mb-5 bg-white">
                     <form id="form-profil" action="modifier_profil.php" method="POST">
+                        <?= csrf_field() ?>
+                        <?php foreach ($erreurs as $err): ?>
+                            <div class="alert alert-danger rounded-4 border-0 small"><?= e($err) ?></div>
+                        <?php endforeach; ?>
                         
                         <h5 class="fw-bold mb-4 text-dark d-flex align-items-center">
                             <span class="material-symbols-rounded text-primary me-2">badge</span> Informations
@@ -117,12 +108,12 @@ try {
                         
                         <div class="mb-4">
                             <label class="form-label text-secondary small fw-bold text-uppercase">Pseudo</label>
-                            <input type="text" class="form-control bg-light border-0 p-3 rounded-4" name="pseudo" value="<?= htmlspecialchars($profil['PSEUDO']) ?>" required>
+                            <input type="text" class="form-control bg-light border-0 p-3 rounded-4" name="pseudo" minlength="2" maxlength="50" value="<?= e($profil['PSEUDO']) ?>" required>
                         </div>
 
                         <div class="mb-4">
                             <label class="form-label text-secondary small fw-bold text-uppercase">Description</label>
-                            <textarea class="form-control bg-light border-0 p-3 rounded-4" name="description" rows="4" placeholder="Parlez un peu de votre passion..."><?= htmlspecialchars($profil['DESCRIPTION'] ?? '') ?></textarea>
+                            <textarea class="form-control bg-light border-0 p-3 rounded-4" name="description" rows="4" maxlength="255" placeholder="Parlez un peu de votre passion..."><?= e($profil['DESCRIPTION'] ?? '') ?></textarea>
                         </div>
 
                         <hr class="my-5 text-muted opacity-25">
