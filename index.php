@@ -1,8 +1,8 @@
 <?php
-session_start();
+require_once './includes/bootstrap.php';
 
 // Si l'utilisateur est déjà connecté, on l'envoie directement sur son tableau de bord
-if (isset($_SESSION['user_id'])) {
+if (utilisateur_id()) {
     header('Location: accueil.php');
     exit();
 }
@@ -96,6 +96,9 @@ if (isset($_SESSION['user_id'])) {
 
     <!-- Section Fonctionnalités -->
     <main class="container flex-grow-1 pb-5">
+        <?php if (($_GET['msg'] ?? '') === 'account_deleted'): ?>
+            <div class="alert alert-success rounded-4 border-0 shadow-sm text-center mb-5">Ton compte et toutes tes données ont bien été supprimés.</div>
+        <?php endif; ?>
         <div class="text-center mb-5">
             <h2 class="h3 fw-bold text-dark mb-2">Tout pour le pêcheur moderne</h2>
             <p class="text-muted">Conçu pour être utilisé au bord de l'eau, directement sur votre smartphone.</p>

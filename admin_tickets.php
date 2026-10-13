@@ -1,19 +1,15 @@
 <?php
-session_start();
-require_once './bdd/env.php';
+require_once './includes/bootstrap.php';
 
 // 1. VÉRIFICATION DES DROITS D'ADMINISTRATION
-if (!isset($_SESSION['user_id'])) {
-    header('Location: connexion.php');
-    exit();
-}
+// (avant : seule la connexion était vérifiée -> tout membre lisait et supprimait les tickets)
+exiger_admin();
 
 $message_succes = "";
 $message_erreur = "";
 
 try {
-    $pdo = new PDO("mysql:host=$host;dbname=$dbname;charset=utf8", $user, $pass);
-    $pdo->setAttribute(PDO::ATTR_ERRMODE, PDO::ERRMODE_EXCEPTION);
+    $pdo = db();
 
     // Traitement des actions (Fermer ou Supprimer un ticket)
     if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action'], $_POST['id_ticket'])) {
@@ -60,7 +56,7 @@ try {
     $total_fermes = count($tickets_fermes);
 
 } catch (PDOException $e) {
-    $message_erreur = "Erreur de base de données : " . $e->getMessage();
+    app_fatal($e);
 }
 
 // Fonction utilitaire pour formater la date proprement
@@ -104,13 +100,13 @@ function formaterDate($date_str) {
         <!-- Messages de notification -->
         <?php if(!empty($message_erreur)): ?>
             <div class="alert alert-danger shadow-sm border-0 rounded-3 mb-4 text-center" role="alert">
-                <?= $message_erreur ?>
+                <?= e($message_erreur) ?>
             </div>
         <?php endif; ?>
         <?php if(!empty($message_succes)): ?>
             <div class="alert alert-success shadow-sm border-0 rounded-3 mb-4 text-center" role="alert">
                 <span class="material-symbols-rounded align-middle me-1">check_circle</span>
-                <?= $message_succes ?>
+                <?= e($message_succes) ?>
             </div>
         <?php endif; ?>
 
@@ -152,7 +148,7 @@ function formaterDate($date_str) {
                             <div class="accordion-item border-0 shadow-sm rounded-4 mb-3 overflow-hidden">
                                 <h2 class="accordion-header">
                                     <button class="accordion-button <?= $i === 1 ? '' : 'collapsed' ?> bg-white fw-bold text-dark" type="button" data-bs-toggle="collapse" data-bs-target="#<?= $cat_id ?>">
-                                        <?= htmlspecialchars($categorie) ?> 
+                                        <?= e($categorie) ?> 
                                         <span class="badge bg-primary ms-2 rounded-pill"><?= count($tickets) ?></span>
                                     </button>
                                 </h2>
@@ -170,17 +166,18 @@ function formaterDate($date_str) {
                                                         <div class="text-end">
                                                             <span class="d-block fw-bold text-dark small">
                                                                 <span class="material-symbols-rounded align-middle" style="font-size: 14px;">person</span> 
-                                                                <?= !empty($t['PSEUDO']) ? htmlspecialchars($t['PSEUDO']) : 'Anonyme' ?>
+                                                                <?= !empty($t['PSEUDO']) ? e($t['PSEUDO']) : 'Anonyme' ?>
                                                             </span>
-                                                            <a href="mailto:<?= htmlspecialchars($t['EMAIL']) ?>" class="small text-decoration-none"><?= htmlspecialchars($t['EMAIL']) ?></a>
+                                                            <a href="mailto:<?= e($t['EMAIL']) ?>" class="small text-decoration-none"><?= e($t['EMAIL']) ?></a>
                                                         </div>
                                                     </div>
-                                                    <p class="text-dark mt-2 small" style="white-space: pre-wrap;"><?= htmlspecialchars($t['MESSAGE']) ?></p>
+                                                    <p class="text-dark mt-2 small" style="white-space: pre-wrap;"><?= e($t['MESSAGE']) ?></p>
                                                     
                                                     <!-- Action : Fermer le ticket -->
                                                     <div class="text-end mt-3">
                                                         <form method="POST" action="admin_tickets.php" class="d-inline">
-                                                            <input type="hidden" name="id_ticket" value="<?= $t['ID_TICKET'] ?>">
+                                                            <?= csrf_field() ?>
+                                                            <input type="hidden" name="id_ticket" value="<?= (int) $t['ID_TICKET'] ?>">
                                                             <input type="hidden" name="action" value="fermer">
                                                             <button type="submit" class="btn btn-sm btn-success rounded-pill fw-semibold px-3 d-flex align-items-center d-inline-flex" onclick="return confirm('Marquer ce ticket comme résolu ?');">
                                                                 <span class="material-symbols-rounded me-1" style="font-size: 18px;">check</span> Résolu
@@ -216,19 +213,20 @@ function formaterDate($date_str) {
                                         <div class="d-flex justify-content-between align-items-center mb-2">
                                             <div>
                                                 <span class="badge bg-secondary mb-1">Ticket #<?= $t['ID_TICKET'] ?> - Archivé</span>
-                                                <span class="d-block text-muted small fw-bold"><?= htmlspecialchars($t['RAISON']) ?></span>
+                                                <span class="d-block text-muted small fw-bold"><?= e($t['RAISON']) ?></span>
                                             </div>
                                             <span class="text-muted small"><span class="material-symbols-rounded align-middle" style="font-size: 14px;">calendar_month</span> <?= formaterDate($t['DATE_CREATION']) ?></span>
                                         </div>
                                         
-                                        <div class="bg-light p-2 rounded-3 small text-muted mb-2 border">
-                                            <?= htmlspecialchars($t['MESSAGE']) ?>
+                                        <div class="bg-light p-2 rounded-3 small text-muted mb-2 border" style="white-space: pre-wrap;">
+                                            <?= e($t['MESSAGE']) ?>
                                         </div>
                                         
                                         <!-- Action : Supprimer définitivement -->
                                         <div class="text-end">
                                             <form method="POST" action="admin_tickets.php" class="d-inline">
-                                                <input type="hidden" name="id_ticket" value="<?= $t['ID_TICKET'] ?>">
+                                                <?= csrf_field() ?>
+                                                <input type="hidden" name="id_ticket" value="<?= (int) $t['ID_TICKET'] ?>">
                                                 <input type="hidden" name="action" value="supprimer">
                                                 <button type="submit" class="btn btn-sm btn-outline-danger rounded-pill fw-semibold px-3 d-flex align-items-center d-inline-flex" title="Supprimer définitivement" onclick="return confirm('Attention, cette action est irréversible. Supprimer ?');">
                                                     <span class="material-symbols-rounded me-1" style="font-size: 16px;">delete</span> Supprimer

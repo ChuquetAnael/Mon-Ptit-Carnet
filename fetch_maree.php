@@ -1,142 +1,114 @@
 <?php
-require_once './includes/auth_bdd.php';
-require_once './cle/api-maree.php'; 
+// Proxy JSON vers api-maree.fr (la clé API reste côté serveur) avec cache en base.
+require_once './includes/bootstrap.php';
 
-header('Content-Type: application/json');
+if (!utilisateur_id()) {
+    json_out(['error' => 'Session expirée, reconnecte-toi.'], 401);
+}
+session_write_close(); // libère la session : les autres pages ne restent pas bloquées pendant l'appel API
 
-$lat_user = isset($_GET['lat']) ? (float)$_GET['lat'] : 0;
-$lng_user = isset($_GET['lng']) ? (float)$_GET['lng'] : 0;
+if (!is_file(__DIR__ . '/cle/api-maree.php')) {
+    json_out(['error' => "Clé API marée absente (fichier cle/api-maree.php)."], 503);
+}
+require_once __DIR__ . '/cle/api-maree.php';
+
+$lat_user = nombre_ou_null($_GET['lat'] ?? null, -90, 90);
+$lng_user = nombre_ou_null($_GET['lng'] ?? null, -180, 180);
+if ($lat_user === null || $lng_user === null) {
+    json_out(['error' => 'Coordonnées invalides.'], 400);
+}
+
+// Date demandée (session passée) ou aujourd'hui
 $date = date('Y-m-d');
+if (!empty($_GET['date'])) {
+    $d = DateTime::createFromFormat('Y-m-d', (string) $_GET['date']);
+    if (!$d || $d->format('Y-m-d') !== $_GET['date']) json_out(['error' => 'Date invalide.'], 400);
+    $date = $_GET['date'];
+}
 
-// Fonction cURL robuste
-function callApiMaree($url) {
-    $ch = curl_init();
-    curl_setopt($ch, CURLOPT_URL, $url);
-    curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
-    curl_setopt($ch, CURLOPT_TIMEOUT, 10);
-    
-    // Désactiver la vérification SSL locale (Indispensable sous XAMPP)
-    curl_setopt($ch, CURLOPT_SSL_VERIFYPEER, false);
-    curl_setopt($ch, CURLOPT_SSL_VERIFYHOST, false);
-    curl_setopt($ch, CURLOPT_USERAGENT, 'MonCarnetDePeche/1.0');
-    
-    // L'API veut la clé dans l'URL, donc on garde juste l'en-tête Accept JSON
-    curl_setopt($ch, CURLOPT_HTTPHEADER, [
-        "Accept: application/json"
-    ]);
-
-    $response = curl_exec($ch);
-    $http_code = curl_getinfo($ch, CURLINFO_HTTP_CODE);
-    $curl_err = curl_error($ch);
-    curl_close($ch);
-
-    if ($http_code != 200 || !$response) {
-        throw new Exception("API HTTP $http_code | Erreur cURL : $curl_err | Réponse : $response");
-    }
-    return $response;
+function distanceKm($lat1, $lon1, $lat2, $lon2)
+{
+    $earth_radius = 6371;
+    $dLat = deg2rad($lat2 - $lat1);
+    $dLon = deg2rad($lon2 - $lon1);
+    $a = sin($dLat / 2) * sin($dLat / 2) + cos(deg2rad($lat1)) * cos(deg2rad($lat2)) * sin($dLon / 2) * sin($dLon / 2);
+    return $earth_radius * 2 * asin(sqrt($a));
 }
 
 try {
-    $pdo = new PDO("mysql:host=$host;dbname=$dbname;charset=utf8", $user, $pass);
-    $pdo->setAttribute(PDO::ATTR_ERRMODE, PDO::ERRMODE_EXCEPTION);
+    $pdo = db();
 
-    $pdo->exec("CREATE TABLE IF NOT EXISTS cache_maree (
-        ID_PORT VARCHAR(100) NOT NULL,
-        DATE_MAREE DATE NOT NULL,
-        DONNEES_JSON MEDIUMTEXT NOT NULL,
-        PRIMARY KEY (ID_PORT, DATE_MAREE)
-    )");
-
+    // 1. Liste des ports (mise en cache sans expiration)
     $stmtSites = $pdo->prepare("SELECT DONNEES_JSON FROM cache_maree WHERE ID_PORT = 'LISTE_SITES'");
     $stmtSites->execute();
-    $cacheSites = $stmtSites->fetch(PDO::FETCH_ASSOC);
+    $sites_json = $stmtSites->fetchColumn();
 
-    if ($cacheSites) {
-        $sites = json_decode($cacheSites['DONNEES_JSON'], true);
-    } else {
-        // ON A REMIS LA CLÉ DANS L'URL ICI
-        $url_sites = "https://api-maree.fr/sites?key=" . CLE_API_MAREE;
-        $sites_json = callApiMaree($url_sites);
-        
-        $stmtInsertSites = $pdo->prepare("INSERT INTO cache_maree (ID_PORT, DATE_MAREE, DONNEES_JSON) VALUES ('LISTE_SITES', '2099-12-31', ?)");
-        $stmtInsertSites->execute([$sites_json]);
-        $sites = json_decode($sites_json, true);
+    if (!$sites_json) {
+        $sites_json = http_get("https://api-maree.fr/sites?key=" . urlencode(CLE_API_MAREE));
+        $sites = $sites_json ? json_decode($sites_json, true) : null;
+        if (!is_array($sites) || isset($sites['error']) || isset($sites['message'])) {
+            json_out(['error' => "Le service de marées ne répond pas pour le moment."], 502);
+        }
+        $pdo->prepare("REPLACE INTO cache_maree (ID_PORT, DATE_MAREE, DONNEES_JSON) VALUES ('LISTE_SITES', '2099-12-31', ?)")
+            ->execute([$sites_json]);
     }
-
-    // Sécurité et purge du cache cassé
-    if (isset($sites['error']) || isset($sites['message'])) {
-        $pdo->exec("DELETE FROM cache_maree WHERE ID_PORT = 'LISTE_SITES'");
-        throw new Exception("L'API a renvoyé une erreur (Cache vidé) : " . json_encode($sites));
-    }
+    $sites = json_decode($sites_json, true);
 
     $list = $sites['data'] ?? $sites['sites'] ?? $sites;
-    
     if (!is_array($list) || empty($list)) {
         $pdo->exec("DELETE FROM cache_maree WHERE ID_PORT = 'LISTE_SITES'");
-        throw new Exception("Format de la liste invalide ou vide. Réponse brute : " . substr(json_encode($sites), 0, 300));
+        json_out(['error' => "Liste des ports indisponible."], 502);
     }
 
-    function distanceKm($lat1, $lon1, $lat2, $lon2) {
-        $earth_radius = 6371; 
-        $dLat = deg2rad($lat2 - $lat1);
-        $dLon = deg2rad($lon2 - $lon1);
-        $a = sin($dLat/2) * sin($dLat/2) + cos(deg2rad($lat1)) * cos(deg2rad($lat2)) * sin($dLon/2) * sin($dLon/2);
-        $c = 2 * asin(sqrt($a));
-        return $earth_radius * $c;
-    }
-
+    // 2. Port le plus proche
     $closest_site = null;
     $closest_site_key = null;
-    $min_distance = 999999;
-    
+    $min_distance = PHP_FLOAT_MAX;
     foreach ($list as $key => $s) {
         $p_lat = $s['latitude'] ?? $s['lat'] ?? null;
         $p_lng = $s['longitude'] ?? $s['lng'] ?? $s['lon'] ?? null;
+        if ($p_lat === null || $p_lng === null) continue;
+        $dist = distanceKm($lat_user, $lng_user, (float) $p_lat, (float) $p_lng);
+        if ($dist < $min_distance) {
+            $min_distance = $dist;
+            $closest_site = $s;
+            $closest_site_key = $key;
+        }
+    }
+    if (!$closest_site) {
+        $pdo->exec("DELETE FROM cache_maree WHERE ID_PORT = 'LISTE_SITES'");
+        json_out(['error' => "Aucun port de référence trouvé."], 502);
+    }
 
-        if ($p_lat !== null && $p_lng !== null) {
-            $dist = distanceKm($lat_user, $lng_user, (float)$p_lat, (float)$p_lng);
-            if ($dist < $min_distance) {
-                $min_distance = $dist;
-                $closest_site = $s;
-                $closest_site_key = $key;
-            }
+    $id_port = (string) ($closest_site['id'] ?? $closest_site['site_id'] ?? $closest_site['slug'] ?? $closest_site_key ?? '');
+    $nom_port = $closest_site['name'] ?? $closest_site['site_name'] ?? $closest_site['nom'] ?? 'Port inconnu';
+
+    // 3. Marée du jour demandé (cache par port et par date)
+    $stmt = $pdo->prepare("SELECT DONNEES_JSON FROM cache_maree WHERE ID_PORT = ? AND DATE_MAREE = ?");
+    $stmt->execute([$id_port, $date]);
+    $response = $stmt->fetchColumn();
+
+    if (!$response) {
+        $url = "https://api-maree.fr/tide-extrema?site=" . urlencode($id_port) . "&from={$date}&to={$date}&tz=Europe/Paris&key=" . urlencode(CLE_API_MAREE);
+        $response = http_get($url);
+        $decode = $response ? json_decode($response, true) : null;
+        if (!is_array($decode) || isset($decode['error'])) {
+            json_out(['error' => "Horaires de marée indisponibles pour ce port."], 502);
+        }
+        $pdo->prepare("REPLACE INTO cache_maree (ID_PORT, DATE_MAREE, DONNEES_JSON) VALUES (?, ?, ?)")
+            ->execute([$id_port, $date, $response]);
+
+        // Purge occasionnelle du cache (les marées anciennes ne servent plus)
+        if (random_int(1, 50) === 1) {
+            $pdo->exec("DELETE FROM cache_maree WHERE ID_PORT <> 'LISTE_SITES' AND DATE_MAREE < (CURDATE() - INTERVAL 400 DAY)");
         }
     }
 
-    if (!$closest_site) {
-         $pdo->exec("DELETE FROM cache_maree WHERE ID_PORT = 'LISTE_SITES'");
-         throw new Exception("Aucun port n'a été trouvé avec des coordonnées. Réponse API : " . substr(json_encode($list), 0, 300));
-    }
-    
-    $id_port = $closest_site['id'] ?? $closest_site['site_id'] ?? $closest_site['slug'] ?? $closest_site_key ?? '';
-    $nom_port = $closest_site['name'] ?? $closest_site['site_name'] ?? $closest_site['nom'] ?? 'Port inconnu';
-
-    $stmt = $pdo->prepare("SELECT DONNEES_JSON FROM cache_maree WHERE ID_PORT = ? AND DATE_MAREE = ?");
-    $stmt->execute([$id_port, $date]);
-    $cachePort = $stmt->fetch(PDO::FETCH_ASSOC);
-
-    if ($cachePort) {
-        $result = json_decode($cachePort['DONNEES_JSON'], true);
-        $result['distance_km'] = round($min_distance, 1);
-        $result['port_name_custom'] = $nom_port;
-        echo json_encode($result);
-        exit();
-    }
-
-    // ON A REMIS LA CLÉ DANS L'URL ICI AUSSI
-    $url_extrema = "https://api-maree.fr/tide-extrema?site={$id_port}&from={$date}&to={$date}&tz=Europe/Paris&key=" . CLE_API_MAREE;
-    $response = callApiMaree($url_extrema);
-    
-    $stmtInsert = $pdo->prepare("INSERT INTO cache_maree (ID_PORT, DATE_MAREE, DONNEES_JSON) VALUES (?, ?, ?)");
-    $stmtInsert->execute([$id_port, $date, $response]);
-    
     $result = json_decode($response, true);
     $result['distance_km'] = round($min_distance, 1);
     $result['port_name_custom'] = $nom_port;
-    
-    echo json_encode($result);
-
-} catch (Exception $e) {
-    echo json_encode(['error' => $e->getMessage()]);
+    json_out($result);
+} catch (Throwable $e) {
+    error_log('[MonPtitCarnet] fetch_maree : ' . $e->getMessage());
+    json_out(['error' => "Erreur serveur lors du calcul de la marée."], 500);
 }
-?>

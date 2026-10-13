@@ -2,32 +2,33 @@
 require_once './includes/auth_bdd.php';
 require_once './BDD/BDD_accueil.php'; 
 
-try {
-    $pdo = new PDO("mysql:host=$host;dbname=$dbname;charset=utf8", $user, $pass);$pdo->setAttribute(PDO::ATTR_ERRMODE, PDO::ERRMODE_EXCEPTION);
+$pdo = db();
 
-    // 1. Récupération du pseudo pour un accueil personnalisé
-    $stmtUser =$pdo->prepare("SELECT PSEUDO FROM utilisateur WHERE ID_UTILISATEUR = :id");
-    $stmtUser->execute(['id' => $_SESSION['user_id']]);$utilisateur = $stmtUser->fetch(PDO::FETCH_ASSOC);$pseudo = $utilisateur ? $utilisateur['PSEUDO'] : 'Pêcheur';
+// 1. Récupération du pseudo pour un accueil personnalisé
+$stmtUser = $pdo->prepare("SELECT PSEUDO FROM utilisateur WHERE ID_UTILISATEUR = :id");
+$stmtUser->execute(['id' => $_SESSION['user_id']]);
+$utilisateur = $stmtUser->fetch(PDO::FETCH_ASSOC);
+$pseudo = $utilisateur ? $utilisateur['PSEUDO'] : 'Pêcheur';
 
-    // 2. Récupération dynamique des 3 dernières prises de l'utilisateur
-    $stmtPrises =$pdo->prepare("
-        SELECT p.PHOTO_CHEMIN, p.TAILLE_CM, e.NOM_COM, e.ICONE_CHEMIN, p.DATE_HEURE
-        FROM prise p
-        JOIN espece e ON p.ID_ESPECE = e.ID_ESPECE
-        JOIN session_p s ON p.ID_SESSION = s.ID_SESSION
-        WHERE s.ID_UTILISATEUR = :id_user
-        ORDER BY p.DATE_HEURE DESC
-        LIMIT 3
-    ");
-    $stmtPrises->execute(['id_user' =>$_SESSION['user_id']]);
-    $dernieres_prises =$stmtPrises->fetchAll(PDO::FETCH_ASSOC);
+// 2. Récupération dynamique des 3 dernières prises de l'utilisateur (photo principale = 1re photo)
+$stmtPrises = $pdo->prepare("
+    SELECT p.TAILLE_CM, e.NOM_COM, e.ICONE_CHEMIN, p.DATE_HEURE,
+           (SELECT ph.CHEMIN FROM photo_prise ph WHERE ph.ID_PRISE = p.ID_PRISE ORDER BY ph.ORDRE, ph.ID_PHOTO LIMIT 1) AS PHOTO_CHEMIN
+    FROM prise p
+    JOIN espece e ON p.ID_ESPECE = e.ID_ESPECE
+    JOIN session_p s ON p.ID_SESSION = s.ID_SESSION
+    WHERE s.ID_UTILISATEUR = :id_user
+    ORDER BY p.DATE_HEURE DESC
+    LIMIT 3
+");
+$stmtPrises->execute(['id_user' => $_SESSION['user_id']]);
+$dernieres_prises = $stmtPrises->fetchAll(PDO::FETCH_ASSOC);
 
-} catch (PDOException $e) {
-    die("Erreur de connexion : " . $e->getMessage());
+// Nettoyage des photos abandonnées (au plus une fois par heure et par session)
+if (empty($_SESSION['dernier_nettoyage']) || $_SESSION['dernier_nettoyage'] < time() - 3600) {
+    nettoyerImagesOrphelines($pdo, (int) $_SESSION['user_id']);
+    $_SESSION['dernier_nettoyage'] = time();
 }
-
-nettoyerImagesOrphelines($pdo,$_SESSION['user_id']);
-
 ?>
 
 <!DOCTYPE html>
@@ -69,7 +70,7 @@ nettoyerImagesOrphelines($pdo,$_SESSION['user_id']);
 
     <!-- En-tête avec message de bienvenue personnalisé -->
     <header class="custom-header text-white text-center py-4 shadow-sm mb-4">
-        <h1 class="h4 mb-1 fw-bold">Bonjour, <?= htmlspecialchars($pseudo) ?> !</h1>
+        <h1 class="h4 mb-1 fw-bold">Bonjour, <?= e($pseudo) ?> !</h1>
         <p class="mb-0 small text-white-50">Prêt pour de nouvelles prises ?</p>
     </header>
 
@@ -187,7 +188,7 @@ nettoyerImagesOrphelines($pdo,$_SESSION['user_id']);
                 <?php foreach($dernieres_prises as$prise): ?>
                     <div class="card border-0 shadow-sm rounded-4 bg-white p-3 d-flex flex-row align-items-center">
                         <?php if (!empty($prise['PHOTO_CHEMIN'])): ?>
-                            <img src="<?= htmlspecialchars($prise['PHOTO_CHEMIN']) ?>" class="mini-catch-img shadow-sm" alt="Prise">
+                            <img src="<?= e($prise['PHOTO_CHEMIN']) ?>" class="mini-catch-img shadow-sm" alt="Prise">
                         <?php else: ?>
                             <div class="bg-light d-flex align-items-center justify-content-center mini-catch-img shadow-sm">
                                 <span class="material-symbols-rounded text-muted">no_photography</span>
@@ -197,15 +198,15 @@ nettoyerImagesOrphelines($pdo,$_SESSION['user_id']);
                         <div class="ms-3 flex-grow-1">
                             <h6 class="fw-bold text-dark mb-1 d-flex align-items-center">
                                 <?php if(!empty($prise['ICONE_CHEMIN'])): ?>
-                                    <img src="<?= htmlspecialchars($prise['ICONE_CHEMIN']) ?>" style="width: 20px; height: 20px; object-fit: contain;" class="me-2">
+                                    <img src="<?= e($prise['ICONE_CHEMIN']) ?>" style="width: 20px; height: 20px; object-fit: contain;" class="me-2">
                                 <?php endif; ?>
-                                <?= htmlspecialchars($prise['NOM_COM']) ?>
+                                <?= e($prise['NOM_COM']) ?>
                             </h6>
                             <div class="text-muted small d-flex align-items-center">
                                 <?php if(!empty($prise['TAILLE_CM'])): ?>
-                                    <span class="me-3"><span class="material-symbols-rounded align-middle fs-6 me-1">straighten</span><?= $prise['TAILLE_CM'] ?> cm</span>
+                                    <span class="me-3"><span class="material-symbols-rounded align-middle fs-6 me-1">straighten</span><?= e($prise['TAILLE_CM']) ?> cm</span>
                                 <?php endif; ?>
-                                <span><span class="material-symbols-rounded align-middle fs-6 me-1">schedule</span><?= date('d/m', strtotime($prise['DATE_HEURE'])) ?></span>
+                                <span><span class="material-symbols-rounded align-middle fs-6 me-1">schedule</span><?= $prise['DATE_HEURE'] ? date('d/m', strtotime($prise['DATE_HEURE'])) : '--' ?></span>
                             </div>
                         </div>
                     </div>
@@ -276,7 +277,7 @@ nettoyerImagesOrphelines($pdo,$_SESSION['user_id']);
                     const lng = position.coords.longitude;
                     
                     // Appel à Open-Meteo avec pression et vent inclus
-                    fetch(`https://api.open-meteo.com/v1/forecast?latitude=${lat}&longitude=${lng}&current=temperature_2m,weathercode,surface_pressure,wind_speed_10m,wind_direction_10m`)
+                    fetch(`https://api.open-meteo.com/v1/forecast?latitude=${lat}&longitude=${lng}&current=temperature_2m,weathercode,pressure_msl,wind_speed_10m,wind_direction_10m`)
                     .then(response => response.json())
                     .then(data => {
                         if(data.current) {
@@ -290,7 +291,7 @@ nettoyerImagesOrphelines($pdo,$_SESSION['user_id']);
                             weatherIcon.innerText = details.icon;
                             
                             // Mise à jour des nouvelles données (Pression & Vent)
-                            weatherPress.innerText = Math.round(data.current.surface_pressure) + ' hPa';
+                            weatherPress.innerText = Math.round(data.current.pressure_msl) + ' hPa';
                             weatherWind.innerText = Math.round(data.current.wind_speed_10m) + ' km/h ' + (windDir ? `(${windDir})` : '');
                         }
                     })

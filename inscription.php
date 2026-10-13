@@ -1,35 +1,55 @@
 <?php
-require_once './includes/auth_bdd.php';
+// Page publique : un visiteur non connecté doit pouvoir créer son compte.
+require_once './includes/bootstrap.php';
+
+if (utilisateur_id()) {
+    header('Location: accueil.php');
+    exit();
+}
 
 $message_erreur = "";
-$message_succes = "";
+$pseudo_saisi = "";
+$email_saisi = "";
 
 if ($_SERVER["REQUEST_METHOD"] == "POST") {
-    try {
-        $pdo = new PDO("mysql:host=$host;dbname=$dbname;charset=utf8", $user, $pass);
-        $pdo->setAttribute(PDO::ATTR_ERRMODE, PDO::ERRMODE_EXCEPTION);
+    $pdo = db();
+    $pseudo_saisi = trim((string) ($_POST['pseudo'] ?? ''));
+    $email_saisi = trim((string) ($_POST['email'] ?? ''));
+    $mot_de_passe = (string) ($_POST['mot_de_passe'] ?? '');
 
+    if (mb_strlen($pseudo_saisi) < 2 || mb_strlen($pseudo_saisi) > 50) {
+        $message_erreur = "Le pseudo doit contenir entre 2 et 50 caractères.";
+    } elseif (!filter_var($email_saisi, FILTER_VALIDATE_EMAIL) || mb_strlen($email_saisi) > 255) {
+        $message_erreur = "Adresse email invalide.";
+    } elseif (mb_strlen($mot_de_passe) < 8) {
+        $message_erreur = "Le mot de passe doit contenir au moins 8 caractères.";
+    } elseif (empty($_POST['cgu_check'])) {
+        $message_erreur = "Tu dois accepter les Conditions Générales d'Utilisation.";
+    } else {
         $stmt_check = $pdo->prepare("SELECT ID_UTILISATEUR FROM utilisateur WHERE MAIL = :mail");
-        $stmt_check->execute(['mail' => $_POST['email']]);
-        
+        $stmt_check->execute(['mail' => $email_saisi]);
+
         if ($stmt_check->fetch()) {
             $message_erreur = "Cette adresse email est déjà utilisée.";
         } else {
-            $mot_de_passe_hache = password_hash($_POST['mot_de_passe'], PASSWORD_DEFAULT);
-            $date_creation = date('Y-m-d'); // Date du jour pour la colonne DATE_CREATION
-
-            $stmt_insert = $pdo->prepare("INSERT INTO utilisateur (PSEUDO, MAIL, MOT_DE_PASSE, DATE_CREATION) VALUES (:pseudo, :mail, :mdp, :date_crea)");
-            $stmt_insert->execute([
-                'pseudo' => $_POST['pseudo'],
-                'mail' => $_POST['email'],
-                'mdp' => $mot_de_passe_hache,
-                'date_crea' => $date_creation
-            ]);
-
-            $message_succes = "Votre compte a été créé avec succès ! Vous pouvez maintenant vous connecter.";
+            try {
+                $stmt_insert = $pdo->prepare("INSERT INTO utilisateur (PSEUDO, MAIL, MOT_DE_PASSE, DATE_CREATION) VALUES (:pseudo, :mail, :mdp, CURDATE())");
+                $stmt_insert->execute([
+                    'pseudo' => $pseudo_saisi,
+                    'mail' => $email_saisi,
+                    'mdp' => password_hash($mot_de_passe, PASSWORD_DEFAULT),
+                ]);
+                header('Location: connexion.php?inscrit=1');
+                exit();
+            } catch (PDOException $e) {
+                // Doublon d'email inséré en parallèle (index UNIQUE sur MAIL)
+                if ($e->getCode() === '23000') {
+                    $message_erreur = "Cette adresse email est déjà utilisée.";
+                } else {
+                    throw $e;
+                }
+            }
         }
-    } catch (PDOException $e) {
-        $message_erreur = "Erreur de base de données : " . $e->getMessage();
     }
 }
 ?>
@@ -51,13 +71,7 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
     <main class="container">
         <?php if(!empty($message_erreur)): ?>
             <div class="alert alert-danger shadow-sm border-0 rounded-3 mb-4 text-center" role="alert">
-                <?= htmlspecialchars($message_erreur) ?>
-            </div>
-        <?php endif; ?>
-        
-        <?php if(!empty($message_succes)): ?>
-            <div class="alert alert-success shadow-sm border-0 rounded-3 mb-4 text-center" role="alert">
-                <?= htmlspecialchars($message_succes) ?>
+                <?= e($message_erreur) ?>
             </div>
         <?php endif; ?>
 
@@ -68,17 +82,19 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
             </div>
 
             <form action="inscription.php" method="POST">
+                <?= csrf_field() ?>
                 <div class="mb-4">
                     <label class="form-label fw-medium text-secondary small text-uppercase">Pseudo</label>
-                    <input type="text" class="form-control form-control-lg bg-light border-0" name="pseudo" required placeholder="VotrePseudo">
+                    <input type="text" class="form-control form-control-lg bg-light border-0" name="pseudo" required minlength="2" maxlength="50" value="<?= e($pseudo_saisi) ?>" placeholder="VotrePseudo">
                 </div>
                 <div class="mb-4">
                     <label class="form-label fw-medium text-secondary small text-uppercase">Email</label>
-                    <input type="email" class="form-control form-control-lg bg-light border-0" name="email" required placeholder="VotreMail@Mail.fr">
+                    <input type="email" class="form-control form-control-lg bg-light border-0" name="email" required maxlength="255" autocomplete="email" value="<?= e($email_saisi) ?>" placeholder="VotreMail@Mail.fr">
                 </div>
                 <div class="mb-4">
                     <label class="form-label fw-medium text-secondary small text-uppercase">Mot de passe</label>
-                    <input type="password" class="form-control form-control-lg bg-light border-0" name="mot_de_passe" required>
+                    <input type="password" class="form-control form-control-lg bg-light border-0" name="mot_de_passe" required minlength="8" autocomplete="new-password">
+                    <div class="form-text">8 caractères minimum.</div>
                 </div>
                 
                 <!-- Ajout de la case à cocher pour les CGU -->

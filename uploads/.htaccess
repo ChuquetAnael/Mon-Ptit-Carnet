@@ -1,0 +1,14 @@
+# Dossier des photos envoyées par les utilisateurs : aucun script ne doit y être exécuté.
+Options -Indexes
+<FilesMatch "\.(?i:php\d?|phtml|phar|pht|pl|py|cgi|sh|html?|svg|js)$">
+    Require all denied
+</FilesMatch>
+<IfModule mod_php.c>
+    php_flag engine off
+</IfModule>
+<IfModule mod_php7.c>
+    php_flag engine off
+</IfModule>
+<IfModule mod_headers.c>
+    Header set X-Content-Type-Options "nosniff"
+</IfModule>

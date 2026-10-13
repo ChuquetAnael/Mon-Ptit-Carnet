@@ -1,35 +1,25 @@
 <?php
-error_reporting(0); // Protège le JavaScript des erreurs HTML
-header('Content-Type: application/json');
+// Proxy JSON vers l'API Hub'eau (hydrométrie) : réservé aux membres connectés.
+require_once './includes/bootstrap.php';
 
-$lat_raw = isset($_GET['lat']) ? str_replace(',', '.', $_GET['lat']) : '0';
-$lng_raw = isset($_GET['lng']) ? str_replace(',', '.', $_GET['lng']) : '0';
+if (!utilisateur_id()) {
+    json_out(['error' => 'Session expirée, reconnecte-toi.'], 401);
+}
+session_write_close();
+header('Content-Type: application/json; charset=UTF-8');
 
-$lat_user = number_format(floatval($lat_raw), 6, '.', '');
-$lng_user = number_format(floatval($lng_raw), 6, '.', '');
+$lat_num = nombre_ou_null($_GET['lat'] ?? null, -90, 90);
+$lng_num = nombre_ou_null($_GET['lng'] ?? null, -180, 180);
+if ($lat_num === null || $lng_num === null) {
+    json_out(['error' => 'Coordonnées invalides.'], 400);
+}
+$lat_user = number_format($lat_num, 6, '.', '');
+$lng_user = number_format($lng_num, 6, '.', '');
 
+/** Appel Hub'eau (TLS vérifié, gzip géré par cURL). Retourne le JSON décodé ou null. */
 function fetchHubeau($url, $timeout = 10) {
-    $options = [
-        "http" => [
-            "method" => "GET",
-            // L'ajout de "Connection: close" est VITAL pour empêcher le serveur Hub'eau de faire planter XAMPP
-            "header" => "User-Agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36\r\nAccept: application/json\r\nAccept-Encoding: gzip\r\nConnection: close\r\n",
-            "timeout" => $timeout
-        ],
-        "ssl" => [
-            "verify_peer" => false,
-            "verify_peer_name" => false
-        ]
-    ];
-    $context = stream_context_create($options);
-    $result = @file_get_contents($url, false, $context);
-    
-    if ($result !== false && strlen($result) > 2 && substr($result, 0, 2) === "\x1f\x8b") {
-        $result = gzdecode($result);
-    }
-    
-    if ($result === false) return null;
-    return json_decode($result, true);
+    $result = http_get($url, $timeout);
+    return $result === null ? null : json_decode($result, true);
 }
 
 function distanceKm($lat1, $lon1, $lat2, $lon2) {
@@ -128,7 +118,7 @@ try {
         exit;
     }
 
-    $currentValue = $obsTr[0]['resultat_obs'] / 1000; 
+    $currentValue = (float) ($obsTr[0]['resultat_obs'] ?? 0) / 1000;
 
     // ÉTAPE 4 : Statistiques (Élaborées)
     $code = $validStation['code_station'];
@@ -161,6 +151,7 @@ try {
         
         $lastDay = "";
         foreach ($sourceObs as $o) {
+            if (!isset($o['resultat_obs'])) continue;
             $val = $o['resultat_obs'] / 1000;
             $sum += $val;
             $count++;
@@ -226,7 +217,7 @@ try {
         'mesure_unit' => $unite       
     ]);
 
-} catch (Exception $e) {
-    echo json_encode(['error' => "Erreur Serveur : " . $e->getMessage()]);
+} catch (Throwable $e) {
+    error_log('[MonPtitCarnet] fetch_riviere : ' . $e->getMessage());
+    echo json_encode(['error' => "Erreur serveur lors de la lecture des données hydrométriques."]);
 }
-?>

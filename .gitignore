@@ -429,5 +429,7 @@ FodyWeavers.xsd
 *.msp
 
 
-uploads/
+uploads/*
+!uploads/.htaccess
+BDD/env.local.php
 cle/

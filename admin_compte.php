@@ -1,62 +1,42 @@
 <?php
-session_start();
-require_once './bdd/env.php';
+require_once './includes/bootstrap.php';
 
 // 1. VÉRIFICATION DES DROITS D'ADMINISTRATION
-if (!isset($_SESSION['user_id'])) {
-    header('Location: connexion.php');
-    exit();
-}
+$id_admin = exiger_admin();
 
-$is_admin = false;
 $message_succes = "";
 $message_erreur = "";
 
 try {
-    $pdo = new PDO("mysql:host=$host;dbname=$dbname;charset=utf8", $user, $pass);
-    $pdo->setAttribute(PDO::ATTR_ERRMODE, PDO::ERRMODE_EXCEPTION);
+    $pdo = db();
 
-    // L'utilisateur connecté est-il dans la table ADMIN ?
-    $stmt_check = $pdo->prepare("SELECT 1 FROM admin WHERE ID_UTILISATEUR = ?");
-    $stmt_check->execute([$_SESSION['user_id']]);
-    if (!$stmt_check->fetch()) {
-        // Tentative d'accès frauduleuse
-        header('Location: accueil.php');
-        exit();
-    }
-    
-    // 2. TRAITEMENT DES ACTIONS (POST)
+    // 2. TRAITEMENT DES ACTIONS (POST, jeton CSRF vérifié par le bootstrap)
     if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action'], $_POST['id_cible'])) {
-        $id_cible = (int)$_POST['id_cible'];
-        
-        // Empêcher l'admin de se supprimer ou de se rétrograder lui-même
-        if ($id_cible === $_SESSION['user_id']) {
+        $id_cible = (int) $_POST['id_cible'];
+
+        // Comparaison entier/entier (avant : int === string, la protection ne marchait jamais)
+        if ($id_cible === $id_admin) {
             $message_erreur = "Action refusée : Vous ne pouvez pas modifier votre propre compte administrateur ici.";
-        } else {
-            if ($_POST['action'] === 'promouvoir') {
-                $stmt = $pdo->prepare("INSERT IGNORE INTO admin (ID_UTILISATEUR, DATE_PROMOTION) VALUES (?, NOW())");
-                $stmt->execute([$id_cible]);
-                $message_succes = "L'utilisateur #$id_cible a été promu Administrateur.";
-                
-            } elseif ($_POST['action'] === 'retrograder') {
-                $stmt = $pdo->prepare("DELETE FROM admin WHERE ID_UTILISATEUR = ?");
-                $stmt->execute([$id_cible]);
-                $message_succes = "Les droits d'administration de l'utilisateur #$id_cible ont été révoqués.";
-                
-            } elseif ($_POST['action'] === 'supprimer') {
-                // La suppression d'un compte demande de supprimer ses dépendances d'abord (ou d'avoir configuré le ON DELETE CASCADE dans la BDD)
-                // Par sécurité, on le fait manuellement dans le bon ordre
-                $pdo->beginTransaction();
-                $pdo->prepare("DELETE FROM prise WHERE ID_SESSION IN (SELECT ID_SESSION FROM session_p WHERE ID_UTILISATEUR = ?)")->execute([$id_cible]);
-                $pdo->prepare("DELETE FROM session_p WHERE ID_UTILISATEUR = ?")->execute([$id_cible]);
-                $pdo->prepare("DELETE FROM spot WHERE ID_UTILISATEUR = ?")->execute([$id_cible]);
-                $pdo->prepare("DELETE FROM leurre WHERE ID_UTILISATEUR = ?")->execute([$id_cible]);
-                $pdo->prepare("DELETE FROM appat WHERE ID_UTILISATEUR = ?")->execute([$id_cible]);
-                $pdo->prepare("DELETE FROM admin WHERE ID_UTILISATEUR = ?")->execute([$id_cible]);
-                $pdo->prepare("DELETE FROM utilisateur WHERE ID_UTILISATEUR = ?")->execute([$id_cible]);
-                $pdo->commit();
-                $message_succes = "Le compte utilisateur #$id_cible et toutes ses données ont été supprimés définitivement.";
-            }
+        } elseif ($_POST['action'] === 'promouvoir') {
+            $stmt = $pdo->prepare("INSERT IGNORE INTO admin (ID_UTILISATEUR, DATE_PROMOTION) VALUES (?, NOW())");
+            $stmt->execute([$id_cible]);
+            $message_succes = "L'utilisateur #$id_cible a été promu Administrateur.";
+        } elseif ($_POST['action'] === 'retrograder') {
+            $stmt = $pdo->prepare("DELETE FROM admin WHERE ID_UTILISATEUR = ?");
+            $stmt->execute([$id_cible]);
+            $message_succes = "Les droits d'administration de l'utilisateur #$id_cible ont été révoqués.";
+        } elseif ($_POST['action'] === 'supprimer') {
+            $pdo->beginTransaction();
+            $pdo->prepare("DELETE FROM prise WHERE ID_SESSION IN (SELECT ID_SESSION FROM session_p WHERE ID_UTILISATEUR = ?)")->execute([$id_cible]);
+            $pdo->prepare("DELETE FROM session_p WHERE ID_UTILISATEUR = ?")->execute([$id_cible]);
+            $pdo->prepare("DELETE FROM spot WHERE ID_UTILISATEUR = ?")->execute([$id_cible]);
+            $pdo->prepare("DELETE FROM leurre WHERE ID_UTILISATEUR = ?")->execute([$id_cible]);
+            $pdo->prepare("DELETE FROM appat WHERE ID_UTILISATEUR = ?")->execute([$id_cible]);
+            $pdo->prepare("DELETE FROM admin WHERE ID_UTILISATEUR = ?")->execute([$id_cible]);
+            $pdo->prepare("DELETE FROM utilisateur WHERE ID_UTILISATEUR = ?")->execute([$id_cible]);
+            $pdo->commit();
+            supprimer_dossier_utilisateur($id_cible); // RGPD : les photos partent aussi
+            $message_succes = "Le compte utilisateur #$id_cible et toutes ses données ont été supprimés définitivement.";
         }
     }
 
@@ -81,8 +61,7 @@ try {
     $utilisateurs = $pdo->query($query)->fetchAll(PDO::FETCH_ASSOC);
 
 } catch (PDOException $e) {
-    if (isset($pdo) && $pdo->inTransaction()) { $pdo->rollBack(); }
-    $message_erreur = "Erreur de base de données : " . $e->getMessage();
+    app_fatal($e);
 }
 
 function formaterDate($date_str) {
@@ -148,13 +127,13 @@ function formaterDate($date_str) {
         <!-- Messages de notification -->
         <?php if(!empty($message_erreur)): ?>
             <div class="alert alert-danger shadow-sm border-0 rounded-3 mb-4 text-center" role="alert">
-                <?= $message_erreur ?>
+                <?= e($message_erreur) ?>
             </div>
         <?php endif; ?>
         <?php if(!empty($message_succes)): ?>
             <div class="alert alert-success shadow-sm border-0 rounded-3 mb-4 text-center" role="alert">
                 <span class="material-symbols-rounded align-middle me-1">check_circle</span>
-                <?= $message_succes ?>
+                <?= e($message_succes) ?>
             </div>
         <?php endif; ?>
 
@@ -172,7 +151,7 @@ function formaterDate($date_str) {
                                 <!-- Avatar -->
                                 <div class="position-relative me-3">
                                     <?php if(!empty($u['PDP_CHEMIN'])): ?>
-                                        <img src="<?= htmlspecialchars($u['PDP_CHEMIN']) ?>" class="user-avatar" alt="Avatar">
+                                        <img src="<?= e($u['PDP_CHEMIN']) ?>" class="user-avatar" alt="Avatar">
                                     <?php else: ?>
                                         <div class="user-avatar text-muted">
                                             <span class="material-symbols-rounded">person</span>
@@ -189,13 +168,13 @@ function formaterDate($date_str) {
                                 <!-- Infos textuelles -->
                                 <div class="flex-grow-1 overflow-hidden">
                                     <h6 class="fw-bold text-dark mb-0 text-truncate d-flex align-items-center">
-                                        <?= htmlspecialchars($u['PSEUDO']) ?>
-                                        <?php if($u['ID_UTILISATEUR'] === $_SESSION['user_id']): ?>
+                                        <?= e($u['PSEUDO']) ?>
+                                        <?php if((int) $u['ID_UTILISATEUR'] === $id_admin): ?>
                                             <span class="badge bg-secondary ms-2 small">Vous</span>
                                         <?php endif; ?>
                                     </h6>
                                     <small class="text-muted text-truncate d-block">
-                                        <a href="mailto:<?= htmlspecialchars($u['MAIL']) ?>" class="text-decoration-none text-muted"><?= htmlspecialchars($u['MAIL']) ?></a>
+                                        <a href="mailto:<?= e($u['MAIL']) ?>" class="text-decoration-none text-muted"><?= e($u['MAIL']) ?></a>
                                     </small>
                                 </div>
                             </div>
@@ -217,11 +196,12 @@ function formaterDate($date_str) {
                             </div>
 
                             <!-- Actions -->
-                            <?php if($u['ID_UTILISATEUR'] !== $_SESSION['user_id']): ?>
+                            <?php if((int) $u['ID_UTILISATEUR'] !== $id_admin): ?>
                                 <div class="d-flex gap-2">
                                     <!-- Gestion des droits -->
                                     <form method="POST" action="admin_compte.php" class="flex-grow-1">
-                                        <input type="hidden" name="id_cible" value="<?= $u['ID_UTILISATEUR'] ?>">
+                                        <?= csrf_field() ?>
+                                        <input type="hidden" name="id_cible" value="<?= (int) $u['ID_UTILISATEUR'] ?>">
                                         <?php if($u['est_admin']): ?>
                                             <input type="hidden" name="action" value="retrograder">
                                             <button type="submit" class="btn btn-sm btn-outline-warning w-100 rounded-pill fw-medium d-flex justify-content-center align-items-center" onclick="return confirm('Retirer les droits administrateur de cet utilisateur ?');">
@@ -237,7 +217,8 @@ function formaterDate($date_str) {
                                     
                                     <!-- Suppression -->
                                     <form method="POST" action="admin_compte.php">
-                                        <input type="hidden" name="id_cible" value="<?= $u['ID_UTILISATEUR'] ?>">
+                                        <?= csrf_field() ?>
+                                        <input type="hidden" name="id_cible" value="<?= (int) $u['ID_UTILISATEUR'] ?>">
                                         <input type="hidden" name="action" value="supprimer">
                                         <button type="submit" class="btn btn-sm btn-danger rounded-pill px-3" title="Supprimer le compte" onclick="return confirm('ATTENTION : Voulez-vous vraiment supprimer ce compte et TOUTES ses sessions de pêche définitivement ?');">
                                             <span class="material-symbols-rounded align-middle" style="font-size: 18px;">delete_forever</span>

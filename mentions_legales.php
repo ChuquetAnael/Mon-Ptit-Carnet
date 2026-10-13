@@ -1,5 +1,5 @@
 <?php
-session_start();
+require_once './includes/bootstrap.php';
 ?>
 <!DOCTYPE html>
 <html lang="fr">

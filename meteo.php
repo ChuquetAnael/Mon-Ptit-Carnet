@@ -1,36 +1,24 @@
 <?php
 require_once './includes/auth_bdd.php';
 
-try {
-    $pdo = new PDO("mysql:host=$host;dbname=$dbname;charset=utf8", $user, $pass);
-    $pdo->setAttribute(PDO::ATTR_ERRMODE, PDO::ERRMODE_EXCEPTION);
+$pdo = db();
 
-    // Récupération de tous les spots de l'utilisateur qui ont des coordonnées GPS
-    $stmtSpots = $pdo->prepare("
-        SELECT ID_SPOT, NOM_SPOT, LOCALISATION 
-        FROM spot 
-        WHERE ID_UTILISATEUR = :id_user AND LOCALISATION IS NOT NULL AND LOCALISATION != ''
-        ORDER BY NOM_SPOT ASC
-    ");
-    $stmtSpots->execute(['id_user' => $_SESSION['user_id']]);
-    $spotsRaw = $stmtSpots->fetchAll(PDO::FETCH_ASSOC);
+// Récupération de tous les spots de l'utilisateur qui ont des coordonnées GPS
+$stmtSpots = $pdo->prepare("
+    SELECT ID_SPOT, NOM_SPOT, LOCALISATION 
+    FROM spot 
+    WHERE ID_UTILISATEUR = :id_user AND LOCALISATION IS NOT NULL AND LOCALISATION != ''
+    ORDER BY NOM_SPOT ASC
+");
+$stmtSpots->execute(['id_user' => $_SESSION['user_id']]);
 
-    // Préparation des coordonnées
-    $spots = [];
-    foreach ($spotsRaw as $s) {
-        $coords = explode(',', $s['LOCALISATION']);
-        if (count($coords) == 2) {
-            $spots[] = [
-                'id' => $s['ID_SPOT'],
-                'nom' => $s['NOM_SPOT'],
-                'lat' => trim($coords[0]),
-                'lng' => trim($coords[1])
-            ];
-        }
+// Coordonnées converties en nombres : aucune donnée brute n'est réinjectée dans le HTML
+$spots = [];
+foreach ($stmtSpots->fetchAll(PDO::FETCH_ASSOC) as $s) {
+    $coords = lire_localisation($s['LOCALISATION']);
+    if ($coords) {
+        $spots[] = ['id' => (int) $s['ID_SPOT'], 'nom' => $s['NOM_SPOT'], 'lat' => $coords[0], 'lng' => $coords[1]];
     }
-
-} catch (PDOException $e) {
-    die("Erreur de base de données : " . $e->getMessage());
 }
 ?>
 
@@ -43,7 +31,7 @@ try {
     
     <?php include './includes/head.php'; ?>
     
-    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.4/dist/chart.umd.min.js"></script>
     
     <link rel="stylesheet" href="css/meteo.css">
 
@@ -69,8 +57,8 @@ try {
                 <?php if (!empty($spots)): ?>
                     <optgroup label="Mes Spots Enregistrés">
                         <?php foreach($spots as $spot): ?>
-                            <option value="<?= $spot['id'] ?>" data-lat="<?= $spot['lat'] ?>" data-lng="<?= $spot['lng'] ?>">
-                                🎣 <?= htmlspecialchars($spot['nom']) ?>
+                            <option value="<?= $spot['id'] ?>" data-lat="<?= e($spot['lat']) ?>" data-lng="<?= e($spot['lng']) ?>">
+                                🎣 <?= e($spot['nom']) ?>
                             </option>
                         <?php endforeach; ?>
                     </optgroup>

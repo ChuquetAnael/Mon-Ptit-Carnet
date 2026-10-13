@@ -57,14 +57,16 @@ function fetchWeather(lat, lng) {
         ? "https://archive-api.open-meteo.com/v1/archive" 
         : "https://api.open-meteo.com/v1/forecast";
 
-    let url = `${baseUrl}?latitude=${lat}&longitude=${lng}&start_date=${dateYMD}&end_date=${dateYMD}&hourly=temperature_2m,surface_pressure,wind_speed_10m,wind_direction_10m,weathercode`;
+    let url = `${baseUrl}?latitude=${lat}&longitude=${lng}&start_date=${dateYMD}&end_date=${dateYMD}&hourly=temperature_2m,pressure_msl,wind_speed_10m,wind_direction_10m,weathercode`;
 
     fetch(url)
     .then(response => response.json())
     .then(data => {
-        if(data.hourly && data.hourly.time) {
+        if (data.hourly && Array.isArray(data.hourly.time) && data.hourly.time.length > 0) {
             let idx = data.hourly.time.findIndex(t => t.startsWith(targetHour));
-            if(idx === -1) idx = 12;
+            if (idx === -1) idx = Math.min(12, data.hourly.time.length - 1);
+            // L'archive peut renvoyer null pour les heures pas encore consolidées
+            if (data.hourly.temperature_2m[idx] === null || data.hourly.temperature_2m[idx] === undefined) return;
 
             let code = data.hourly.weathercode[idx];
             let dir = data.hourly.wind_direction_10m[idx];
@@ -76,12 +78,12 @@ function fetchWeather(lat, lng) {
             document.getElementById('ui_ciel').innerText = skyText;
             document.getElementById('input_ciel').value = skyText;
             document.getElementById('ui_temp').innerText = data.hourly.temperature_2m[idx];
-            document.getElementById('ui_press').innerText = data.hourly.surface_pressure[idx];
+            document.getElementById('ui_press').innerText = data.hourly.pressure_msl[idx];
             document.getElementById('ui_wind').innerText = data.hourly.wind_speed_10m[idx];
             document.getElementById('ui_direc').innerText = windDirText ? `(${windDirText})` : '';
             
             document.getElementById('input_temp').value = data.hourly.temperature_2m[idx];
-            document.getElementById('input_press').value = data.hourly.surface_pressure[idx];
+            document.getElementById('input_press').value = data.hourly.pressure_msl[idx];
             document.getElementById('input_wind').value = data.hourly.wind_speed_10m[idx];
             document.getElementById('input_direc').value = windDirText;
         }
@@ -90,7 +92,8 @@ function fetchWeather(lat, lng) {
 
 // LE NOUVEAU CŒUR MARITIME : Connecté au Proxy api-maree.fr
 function fetchTide(lat, lng, dateYMD) {
-    let url = `fetch_maree.php?lat=${lat}&lng=${lng}`;
+    // La date de la session est transmise : sinon le serveur renvoyait toujours la marée du jour
+    let url = `fetch_maree.php?lat=${encodeURIComponent(lat)}&lng=${encodeURIComponent(lng)}&date=${encodeURIComponent(dateYMD)}`;
 
     fetch(url)
     .then(response => response.json())
@@ -182,6 +185,8 @@ function fetchTide(lat, lng, dateYMD) {
 // INITIALISATION DE LA CARTE ET ÉVÉNEMENTS
 // ==========================================
 document.addEventListener("DOMContentLoaded", function() {
+    // Script chargé uniquement là où il y a une carte : on sort proprement sinon
+    if (!document.getElementById('map') || typeof L === 'undefined') return;
     let latInput = document.getElementById('input_lat');
     let lngInput = document.getElementById('input_lng');
     let initLat = parseFloat(latInput.value);

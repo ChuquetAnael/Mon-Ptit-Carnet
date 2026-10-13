@@ -1,87 +1,42 @@
 <?php
 require_once './includes/auth_bdd.php';
 
-$id_user = $_SESSION['user_id'];
+$id_user = (int) $_SESSION['user_id'];
 $message_erreur = '';
-$message_succes = '';
+$pdo = db();
 
-try {
-    $pdo = new PDO("mysql:host=$host;dbname=$dbname;charset=utf8", $user, $pass);
-    $pdo->setAttribute(PDO::ATTR_ERRMODE, PDO::ERRMODE_EXCEPTION);
+// VÉRIFICATION DES DROITS ADMINISTRATEUR (affichage du lien)
+$is_admin = est_admin($id_user);
 
-    // =========================================================================
-    // VÉRIFICATION DES DROITS ADMINISTRATEUR
-    // =========================================================================
-    $is_admin = false;
-    $stmtAdmin = $pdo->prepare("SELECT 1 FROM admin WHERE ID_UTILISATEUR = :id");
-    $stmtAdmin->execute(['id' => $id_user]);
-    if ($stmtAdmin->fetch()) {
-        $is_admin = true;
+// =========================================================================
+// GESTION DE LA SUPPRESSION DU COMPTE
+// =========================================================================
+if (isset($_POST['delete_account']) && !empty($_POST['password_confirm'])) {
+    $stmtUser = $pdo->prepare("SELECT MOT_DE_PASSE FROM utilisateur WHERE ID_UTILISATEUR = :id");
+    $stmtUser->execute(['id' => $id_user]);
+    $hash = $stmtUser->fetchColumn();
+
+    // Uniquement password_verify : la comparaison en clair (mot de passe === hash) a été retirée
+    if ($hash && password_verify((string) $_POST['password_confirm'], $hash)) {
+        $pdo->beginTransaction();
+        $pdo->prepare("DELETE FROM prise WHERE ID_SESSION IN (SELECT ID_SESSION FROM session_p WHERE ID_UTILISATEUR = ?)")->execute([$id_user]);
+        $pdo->prepare("DELETE FROM session_p WHERE ID_UTILISATEUR = ?")->execute([$id_user]);
+        $pdo->prepare("DELETE FROM leurre WHERE ID_UTILISATEUR = ?")->execute([$id_user]);
+        $pdo->prepare("DELETE FROM appat WHERE ID_UTILISATEUR = ?")->execute([$id_user]);
+        $pdo->prepare("DELETE FROM spot WHERE ID_UTILISATEUR = ?")->execute([$id_user]);
+        $pdo->prepare("DELETE FROM admin WHERE ID_UTILISATEUR = ?")->execute([$id_user]);
+        $pdo->prepare("DELETE FROM utilisateur WHERE ID_UTILISATEUR = ?")->execute([$id_user]);
+        $pdo->commit();
+
+        // Fichiers supprimés une fois la base à jour (photos, avatar, bannière, fichiers orphelins)
+        supprimer_dossier_utilisateur($id_user);
+
+        $_SESSION = [];
+        session_destroy();
+        header('Location: index.php?msg=account_deleted');
+        exit();
     }
-
-    // =========================================================================
-    // GESTION DE LA SUPPRESSION DU COMPTE
-    // =========================================================================
-    if (isset($_POST['delete_account']) && !empty($_POST['password_confirm'])) {
-        $password_fourni = $_POST['password_confirm'];
-
-        // 1. Récupérer les infos de l'utilisateur (Mot de passe + Photos de profil)
-        $stmtUser = $pdo->prepare("SELECT mot_de_passe, PDP_CHEMIN, BANNIERE_CHEMIN FROM utilisateur WHERE ID_UTILISATEUR = :id");
-        $stmtUser->execute(['id' => $id_user]);
-        $userData = $stmtUser->fetch(PDO::FETCH_ASSOC);
-
-        if ($userData) {
-            // 2. Vérification du mot de passe
-            if (password_verify($password_fourni, $userData['mot_de_passe']) || $password_fourni === $userData['mot_de_passe']) {
-                
-                // --- A. SUPPRESSION DES FICHIERS PHYSIQUES (Photos) ---
-                $fichiers_a_supprimer = [];
-                if (!empty($userData['PDP_CHEMIN'])) $fichiers_a_supprimer[] = $userData['PDP_CHEMIN'];
-                if (!empty($userData['BANNIERE_CHEMIN'])) $fichiers_a_supprimer[] = $userData['BANNIERE_CHEMIN'];
-
-                // Récupérer toutes les photos de prises de l'utilisateur
-                $stmtPhotos = $pdo->prepare("
-                    SELECT p.PHOTO_CHEMIN 
-                    FROM prise p 
-                    JOIN session_p s ON p.ID_SESSION = s.ID_SESSION 
-                    WHERE s.ID_UTILISATEUR = :id AND p.PHOTO_CHEMIN IS NOT NULL
-                ");
-                $stmtPhotos->execute(['id' => $id_user]);
-                while ($row = $stmtPhotos->fetch(PDO::FETCH_ASSOC)) {
-                    $fichiers_a_supprimer[] = $row['PHOTO_CHEMIN'];
-                }
-
-                foreach ($fichiers_a_supprimer as $fichier) {
-                    if (file_exists($fichier)) {
-                        unlink($fichier);
-                    }
-                }
-
-                // --- B. SUPPRESSION EN BASE DE DONNÉES ---
-                $pdo->prepare("DELETE FROM prise WHERE ID_SESSION IN (SELECT ID_SESSION FROM session_p WHERE ID_UTILISATEUR = ?)")->execute([$id_user]);
-                $pdo->prepare("DELETE FROM session_p WHERE ID_UTILISATEUR = ?")->execute([$id_user]);
-                $pdo->prepare("DELETE FROM leurre WHERE ID_UTILISATEUR = ?")->execute([$id_user]);
-                $pdo->prepare("DELETE FROM appat WHERE ID_UTILISATEUR = ?")->execute([$id_user]);
-                $pdo->prepare("DELETE FROM spot WHERE ID_UTILISATEUR = ?")->execute([$id_user]);
-                
-                // Suppression de la table ADMIN s'il en faisait partie
-                $pdo->prepare("DELETE FROM admin WHERE ID_UTILISATEUR = ?")->execute([$id_user]);
-                
-                $pdo->prepare("DELETE FROM utilisateur WHERE ID_UTILISATEUR = ?")->execute([$id_user]);
-
-                // --- C. DÉCONNEXION ET REDIRECTION ---
-                session_destroy();
-                header('Location: index.php?msg=account_deleted');
-                exit();
-
-            } else {
-                $message_erreur = "Le mot de passe est incorrect. La suppression a été annulée.";
-            }
-        }
-    }
-
-} catch (PDOException $e) {
-    die("Erreur de base de données : " . $e->getMessage());
+    $message_erreur = "Le mot de passe est incorrect. La suppression a été annulée.";
 }
 ?>
 
@@ -122,7 +77,7 @@ try {
                 <?php if(!empty($message_erreur)): ?>
                     <div class="alert alert-danger alert-dismissible fade show rounded-4 border-0 shadow-sm" role="alert">
                         <span class="material-symbols-rounded align-middle me-2">error</span>
-                        <?= htmlspecialchars($message_erreur) ?>
+                        <?= e($message_erreur) ?>
                         <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
                     </div>
                 <?php endif; ?>
@@ -224,6 +179,7 @@ try {
         <div class="modal-dialog modal-dialog-centered">
             <div class="modal-content rounded-4 border-0 shadow">
                 <form method="POST">
+                    <?= csrf_field() ?>
                     <div class="modal-header border-0 pb-0 mt-2 mx-2">
                         <h5 class="modal-title text-danger fw-bold d-flex align-items-center" id="deleteModalLabel">
                             <span class="material-symbols-rounded me-2">warning</span> Zone de danger

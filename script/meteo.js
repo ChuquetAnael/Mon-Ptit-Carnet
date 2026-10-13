@@ -2,12 +2,18 @@ let tideChartInstance = null;
 let riverChartInstance = null;
 let riverAbortController = null;
 
+/** Les textes renvoyés par les APIs externes sont échappés avant insertion dans le HTML. */
+function escapeHtml(valeur) {
+    return String(valeur ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+}
+
 document.addEventListener('DOMContentLoaded', function() {
     const selector = document.getElementById('locationSelector');
     const loader = document.getElementById('loader');
     const content = document.getElementById('weatherContent');
     const forecastContainer = document.getElementById('forecast-container');
     const tideContainer = document.getElementById('tide-container');
+    const loaderHtmlInitial = loader.innerHTML; // pour réafficher le spinner après une erreur
 
     document.querySelectorAll('input[name="viewToggle"]').forEach(radio => {
         radio.addEventListener('change', function() {
@@ -55,7 +61,7 @@ document.addEventListener('DOMContentLoaded', function() {
 
         let fetchId = ++currentRiverFetchId;
 
-        fetch(`fetch_riviere.php?lat=${lat}&lng=${lng}`, { signal: riverAbortController.signal })
+        fetch(`fetch_riviere.php?lat=${encodeURIComponent(lat)}&lng=${encodeURIComponent(lng)}`, { signal: riverAbortController.signal })
         .then(res => res.json())
         .then(data => {
             if (fetchId !== currentRiverFetchId) return; 
@@ -65,7 +71,7 @@ document.addEventListener('DOMContentLoaded', function() {
                 <div class="alert bg-white border-0 shadow-sm text-center rounded-4 p-5 mt-3">
                     <span class="material-symbols-rounded text-muted mb-3" style="font-size: 60px;">waves</span>
                     <h5 class="fw-bold text-dark">Information Hydrométrique</h5>
-                    <p class="text-muted mb-0">${data.error}</p>
+                    <p class="text-muted mb-0">${escapeHtml(data.error)}</p>
                 </div>`;
                 return;
             }
@@ -75,7 +81,7 @@ document.addEventListener('DOMContentLoaded', function() {
                 <span class="material-symbols-rounded text-info me-3" style="font-size: 28px;">water</span>
                 <div>
                     <small class="d-block text-muted fw-bold text-uppercase" style="font-size: 0.65rem; letter-spacing: 1px;">Station de mesure</small>
-                    <span class="fw-bold text-info d-block">${data.station_name}</span>
+                    <span class="fw-bold text-info d-block">${escapeHtml(data.station_name)}</span>
                     <small class="text-secondary" style="font-size: 0.75rem;">Située à ${data.distance} km</small>
                 </div>
             </div>
@@ -146,6 +152,7 @@ document.addEventListener('DOMContentLoaded', function() {
     }
 
     function fetchConditions(lat, lng, locationName) {
+        loader.innerHTML = loaderHtmlInitial;
         loader.style.display = 'block';
         content.style.display = 'none';
         forecastContainer.innerHTML = '';
@@ -154,12 +161,13 @@ document.addEventListener('DOMContentLoaded', function() {
         fetchRiverData(lat, lng);
 
         // AJOUT DES VARIABLES ASTRONOMIQUES (is_day, sunrise, sunset)
-        const urlWeather = `https://api.open-meteo.com/v1/forecast?latitude=${lat}&longitude=${lng}&current=temperature_2m,surface_pressure,wind_speed_10m,wind_direction_10m,weathercode,is_day&daily=weathercode,temperature_2m_max,temperature_2m_min,precipitation_sum,wind_speed_10m_max,wind_direction_10m_dominant,sunrise,sunset&hourly=temperature_2m,precipitation,wind_speed_10m,wind_direction_10m,weathercode&timezone=Europe%2FParis`;
-        const urlMareeFr = `fetch_maree.php?lat=${lat}&lng=${lng}`;
+        const urlWeather = `https://api.open-meteo.com/v1/forecast?latitude=${lat}&longitude=${lng}&current=temperature_2m,pressure_msl,wind_speed_10m,wind_direction_10m,weathercode,is_day&daily=weathercode,temperature_2m_max,temperature_2m_min,precipitation_sum,wind_speed_10m_max,wind_direction_10m_dominant,sunrise,sunset&hourly=temperature_2m,precipitation,wind_speed_10m,wind_direction_10m,weathercode&timezone=Europe%2FParis`;
+        const urlMareeFr = `fetch_maree.php?lat=${encodeURIComponent(lat)}&lng=${encodeURIComponent(lng)}`;
 
+        // Une panne du service de marées ne doit pas empêcher l'affichage de la météo
         Promise.all([
             fetch(urlWeather).then(res => res.json()),
-            fetch(urlMareeFr).then(res => res.json())
+            fetch(urlMareeFr).then(res => res.json()).catch(() => ({ error: 'Marée indisponible' }))
         ])
         .then(([dataWeather, dataMareeFr]) => {
             
@@ -186,7 +194,7 @@ document.addEventListener('DOMContentLoaded', function() {
                     mainCard.style.background = 'linear-gradient(135deg, #1e3c72 0%, #2a5298 100%)';
                 }
 
-                document.getElementById('current-press').innerText = Math.round(dataWeather.current.surface_pressure) + ' hPa';
+                document.getElementById('current-press').innerText = Math.round(dataWeather.current.pressure_msl) + ' hPa';
                 document.getElementById('current-wind').innerText = Math.round(dataWeather.current.wind_speed_10m) + ' km/h ' + (currentWindDir ? `(${currentWindDir})` : '');
 
                 let hTime = dataWeather.hourly.time;
@@ -413,7 +421,7 @@ document.addEventListener('DOMContentLoaded', function() {
                 <span class="material-symbols-rounded text-primary me-3" style="font-size: 28px;">anchor</span>
                 <div>
                     <small class="d-block text-muted fw-bold text-uppercase" style="font-size: 0.65rem; letter-spacing: 1px;">Port de référence</small>
-                    <span class="fw-bold text-primary d-block">${portName}</span>
+                    <span class="fw-bold text-primary d-block">${escapeHtml(portName)}</span>
                     <small class="text-secondary" style="font-size: 0.75rem;">Situé à ${distPort} km</small>
                 </div>
             </div>
@@ -518,6 +526,7 @@ document.addEventListener('DOMContentLoaded', function() {
     }
 
     function loadCurrentGPS() {
+        loader.innerHTML = loaderHtmlInitial;
         loader.style.display = 'block';
         content.style.display = 'none';
         

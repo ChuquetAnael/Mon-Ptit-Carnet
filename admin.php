@@ -1,26 +1,11 @@
 <?php
-session_start();
-require_once './bdd/env.php';
+require_once './includes/bootstrap.php';
 
 // 1. VÉRIFICATION DES DROITS D'ADMINISTRATION
-if (!isset($_SESSION['user_id'])) {
-    header('Location: connexion.php');
-    exit();
-}
-
-$id_user = $_SESSION['user_id'];
+$id_user = exiger_admin();
 
 try {
-    $pdo = new PDO("mysql:host=$host;dbname=$dbname;charset=utf8", $user, $pass);
-    $pdo->setAttribute(PDO::ATTR_ERRMODE, PDO::ERRMODE_EXCEPTION);
-
-    // L'utilisateur connecté est-il dans la table ADMIN ?
-    $stmt_check = $pdo->prepare("SELECT 1 FROM admin WHERE ID_UTILISATEUR = ?");
-    $stmt_check->execute([$id_user]);
-    if (!$stmt_check->fetch()) {
-        header('Location: accueil.php');
-        exit();
-    }
+    $pdo = db();
 
     // =========================================================================
     // 2. RÉCUPÉRATION DES STATISTIQUES GLOBALES DU SITE
@@ -43,8 +28,9 @@ try {
     $nb_prises = $prises_data['total_prises'] ?? 0;
     $taux_nokill = ($nb_prises > 0) ? round(($prises_data['relachees'] / $nb_prises) * 100) : 0;
 
-    // Tickets en attente
+    // Tickets en attente et signalements d'images à traiter
     $nb_tickets = $pdo->query("SELECT COUNT(*) FROM ticket WHERE STATUT = 'Ouvert'")->fetchColumn();
+    $nb_signalements = $pdo->query("SELECT COUNT(DISTINCT TYPE_CONTENU, ID_PHOTO, ID_UTILISATEUR_CIBLE) FROM signalement WHERE STATUT = 'ouvert'")->fetchColumn();
 
     // Les 5 derniers inscrits
     $derniers_inscrits = $pdo->query("
@@ -57,15 +43,15 @@ try {
     // =========================================================================
     // 3. DONNÉES POUR LE GRAPHIQUE (Croissance des utilisateurs - 6 derniers mois)
     // =========================================================================
+    // Les 6 DERNIERS mois (avant : ORDER BY ASC LIMIT 6 renvoyait les 6 premiers)
     $stmtCroissance = $pdo->query("
-        SELECT 
-            DATE_FORMAT(DATE_CREATION, '%m') as mois_num, 
-            DATE_FORMAT(DATE_CREATION, '%Y') as annee,
-            COUNT(*) as nb_inscrits
-        FROM utilisateur
-        GROUP BY annee, mois_num
-        ORDER BY annee ASC, mois_num ASC
-        LIMIT 6
+        SELECT * FROM (
+            SELECT DATE_FORMAT(DATE_CREATION, '%m') as mois_num, DATE_FORMAT(DATE_CREATION, '%Y') as annee, COUNT(*) as nb_inscrits
+            FROM utilisateur
+            GROUP BY annee, mois_num
+            ORDER BY annee DESC, mois_num DESC
+            LIMIT 6
+        ) derniers ORDER BY annee ASC, mois_num ASC
     ");
     $data_croissance = $stmtCroissance->fetchAll(PDO::FETCH_ASSOC);
     
@@ -79,7 +65,7 @@ try {
     }
 
 } catch (PDOException $e) {
-    die("Erreur de base de données : " . $e->getMessage());
+    app_fatal($e);
 }
 
 function formaterDate($date_str) {
@@ -100,7 +86,7 @@ function formaterDate($date_str) {
     <link href="css/style.css" rel="stylesheet">
     
     <!-- Chart.js pour les graphiques -->
-    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.4/dist/chart.umd.min.js"></script>
     
     <style>
         .top-bar-admin {
@@ -158,6 +144,19 @@ function formaterDate($date_str) {
     <main class="container">
         
         <!-- MODULE DE NAVIGATION ADMIN -->
+        <a href="admin_moderation.php" class="card border-0 shadow-sm rounded-4 bg-white admin-nav-card p-3 mb-3 d-flex flex-row align-items-center justify-content-between text-decoration-none">
+            <div class="d-flex align-items-center">
+                <div class="bg-danger bg-opacity-10 text-danger rounded-circle d-flex align-items-center justify-content-center me-3" style="width: 50px; height: 50px;">
+                    <span class="material-symbols-rounded fs-3">shield</span>
+                </div>
+                <span class="fw-bold text-dark">Modération des images</span>
+            </div>
+            <?php if ($nb_signalements > 0): ?>
+                <span class="badge rounded-pill bg-danger"><?= (int) $nb_signalements ?> à traiter</span>
+            <?php else: ?>
+                <span class="material-symbols-rounded text-muted">chevron_right</span>
+            <?php endif; ?>
+        </a>
         <div class="row g-3 mb-4">
             <div class="col-6">
                 <a href="admin_compte.php" class="card border-0 shadow-sm rounded-4 bg-white admin-nav-card p-3 d-flex flex-column align-items-center justify-content-center h-100">
@@ -171,7 +170,7 @@ function formaterDate($date_str) {
                 <a href="admin_tickets.php" class="card border-0 shadow-sm rounded-4 bg-white admin-nav-card p-3 d-flex flex-column align-items-center justify-content-center h-100 position-relative">
                     <?php if($nb_tickets > 0): ?>
                         <span class="position-absolute top-0 start-100 translate-middle badge rounded-pill bg-danger" style="margin-top: 10px; margin-left: -15px;">
-                            <?= $nb_tickets ?>
+                            <?= (int) $nb_tickets ?>
                         </span>
                     <?php endif; ?>
                     <div class="bg-warning bg-opacity-10 text-warning rounded-circle d-flex align-items-center justify-content-center mb-2" style="width: 50px; height: 50px;">
@@ -252,16 +251,16 @@ function formaterDate($date_str) {
                     <li class="list-group-item p-3 d-flex align-items-center justify-content-between">
                         <div class="d-flex align-items-center">
                             <?php if(!empty($u['PDP_CHEMIN'])): ?>
-                                <img src="<?= htmlspecialchars($u['PDP_CHEMIN']) ?>" class="user-avatar-sm me-3 border shadow-sm">
+                                <img src="<?= e($u['PDP_CHEMIN']) ?>" class="user-avatar-sm me-3 border shadow-sm">
                             <?php else: ?>
                                 <div class="user-avatar-sm me-3 text-muted border shadow-sm">
                                     <span class="material-symbols-rounded">person</span>
                                 </div>
                             <?php endif; ?>
                             <div>
-                                <h6 class="fw-bold mb-0 text-dark"><?= htmlspecialchars($u['PSEUDO']) ?></h6>
+                                <h6 class="fw-bold mb-0 text-dark"><?= e($u['PSEUDO']) ?></h6>
                                 <small class="text-muted" style="font-size: 0.75rem;">
-                                    <?= htmlspecialchars($u['MAIL']) ?>
+                                    <?= e($u['MAIL']) ?>
                                 </small>
                             </div>
                         </div>

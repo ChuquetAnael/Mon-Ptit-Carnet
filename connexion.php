@@ -1,34 +1,55 @@
 <?php
-session_start();
+require_once './includes/bootstrap.php';
 
-if (isset($_SESSION['user_id'])) {
-    header('Location: index.php');
+if (utilisateur_id()) {
+    header('Location: accueil.php');
     exit();
 }
 
-require_once './bdd/env.php';
 $message_erreur = "";
+$message_succes = isset($_GET['inscrit']) ? "Compte créé ! Tu peux maintenant te connecter." : "";
+$email_saisi = "";
+
+const TENTATIVES_MAX = 5;          // échecs autorisés...
+const FENETRE_TENTATIVES = 15;     // ...sur cette durée (minutes)
 
 if ($_SERVER["REQUEST_METHOD"] == "POST") {
-    try {
-        $pdo = new PDO("mysql:host=$host;dbname=$dbname;charset=utf8", $user, $pass);
-        $pdo->setAttribute(PDO::ATTR_ERRMODE, PDO::ERRMODE_EXCEPTION);
+    $pdo = db();
+    $email_saisi = trim((string) ($_POST['email'] ?? ''));
+    $mot_de_passe = (string) ($_POST['mot_de_passe'] ?? '');
+    $ip = $_SERVER['REMOTE_ADDR'] ?? '0.0.0.0';
 
-        $stmt = $pdo->prepare("SELECT * FROM utilisateur WHERE MAIL = :mail");
-        $stmt->execute(['mail' => $_POST['email']]);
+    // Anti force brute : on compte les échecs récents pour ce compte et cette IP
+    $stmtEchecs = $pdo->prepare("
+        SELECT COUNT(*) FROM tentative_connexion
+        WHERE (MAIL = ? OR IP = ?) AND DATE_TENTATIVE > (NOW() - INTERVAL " . FENETRE_TENTATIVES . " MINUTE)
+    ");
+    $stmtEchecs->execute([$email_saisi, $ip]);
+
+    if ($stmtEchecs->fetchColumn() >= TENTATIVES_MAX) {
+        $message_erreur = "Trop de tentatives. Réessaie dans " . FENETRE_TENTATIVES . " minutes.";
+    } else {
+        $stmt = $pdo->prepare("SELECT ID_UTILISATEUR, PSEUDO, MOT_DE_PASSE FROM utilisateur WHERE MAIL = :mail");
+        $stmt->execute(['mail' => $email_saisi]);
         $utilisateur = $stmt->fetch(PDO::FETCH_ASSOC);
 
-        if ($utilisateur && password_verify($_POST['mot_de_passe'], $utilisateur['MOT_DE_PASSE'])) {
-            $_SESSION['user_id'] = $utilisateur['ID_UTILISATEUR'];
-            $_SESSION['user_pseudo'] = $utilisateur['PSEUDO'];
-            
-            header('Location: index.php');
+        if ($utilisateur && password_verify($mot_de_passe, $utilisateur['MOT_DE_PASSE'])) {
+            // Mise à niveau transparente du hash si l'algorithme par défaut évolue
+            if (password_needs_rehash($utilisateur['MOT_DE_PASSE'], PASSWORD_DEFAULT)) {
+                $pdo->prepare("UPDATE utilisateur SET MOT_DE_PASSE = ? WHERE ID_UTILISATEUR = ?")
+                    ->execute([password_hash($mot_de_passe, PASSWORD_DEFAULT), $utilisateur['ID_UTILISATEUR']]);
+            }
+            $pdo->prepare("DELETE FROM tentative_connexion WHERE MAIL = ?")->execute([$email_saisi]);
+            connecter_utilisateur($utilisateur);
+            header('Location: accueil.php');
             exit();
-        } else {
-            $message_erreur = "Email ou mot de passe incorrect.";
         }
-    } catch (PDOException $e) {
-        $message_erreur = "Erreur de base de données : " . $e->getMessage();
+
+        $pdo->prepare("INSERT INTO tentative_connexion (IP, MAIL, DATE_TENTATIVE) VALUES (?, ?, NOW())")->execute([$ip, $email_saisi]);
+        if (random_int(1, 20) === 1) { // purge occasionnelle des vieilles tentatives
+            $pdo->exec("DELETE FROM tentative_connexion WHERE DATE_TENTATIVE < (NOW() - INTERVAL 1 DAY)");
+        }
+        $message_erreur = "Email ou mot de passe incorrect.";
     }
 }
 ?>
@@ -52,7 +73,12 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
     <main class="container">
         <?php if(!empty($message_erreur)): ?>
             <div class="alert alert-danger shadow-sm border-0 rounded-3 mb-4 text-center" role="alert">
-                <?= htmlspecialchars($message_erreur) ?>
+                <?= e($message_erreur) ?>
+            </div>
+        <?php endif; ?>
+        <?php if(!empty($message_succes)): ?>
+            <div class="alert alert-success shadow-sm border-0 rounded-3 mb-4 text-center" role="alert">
+                <?= e($message_succes) ?>
             </div>
         <?php endif; ?>
 
@@ -63,13 +89,14 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
             </div>
 
             <form action="connexion.php" method="POST">
+                <?= csrf_field() ?>
                 <div class="mb-4">
                     <label class="form-label fw-medium text-secondary small text-uppercase">Email</label>
-                    <input type="email" class="form-control form-control-lg bg-light border-0" name="email" required placeholder="VotreMail@Mail.fr">
+                    <input type="email" class="form-control form-control-lg bg-light border-0" name="email" required autocomplete="email" value="<?= e($email_saisi) ?>" placeholder="VotreMail@Mail.fr">
                 </div>
                 <div class="mb-4">
                     <label class="form-label fw-medium text-secondary small text-uppercase">Mot de passe</label>
-                    <input type="password" class="form-control form-control-lg bg-light border-0" name="mot_de_passe" required>
+                    <input type="password" class="form-control form-control-lg bg-light border-0" name="mot_de_passe" required autocomplete="current-password">
                 </div>
                 
                 <div class="d-grid mt-5">
