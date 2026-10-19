@@ -47,7 +47,7 @@ foreach ($sessions as $s) {
     $base = strtotime($jour) < time() - 5 * 86400 ? 'https://archive-api.open-meteo.com/v1/archive' : API_OPEN_METEO . '/forecast';
     $meteo = http_json($base . sprintf('?latitude=%.4F&longitude=%.4F', $lat, $lng) . "&start_date=$veille&end_date=$jour&hourly=pressure_msl&timezone=Europe%2FParis", 15);
     if (isset($meteo['hourly']['time'])) {
-        $i = array_search(substr($s['DATE_DEBUT'], 0, 13) . ':00', $meteo['hourly']['time'], true);
+        $i = array_search(str_replace(' ', 'T', substr($s['DATE_DEBUT'], 0, 13)) . ':00', $meteo['hourly']['time'], true);
         $p = $meteo['hourly']['pressure_msl'];
         if ($i !== false && isset($p[$i])) {
             if (isset($p[$i - 3])) $t3 = round($p[$i] - $p[$i - 3], 1);

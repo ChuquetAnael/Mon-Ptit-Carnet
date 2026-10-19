@@ -2,15 +2,31 @@ codex :
     asset a changé : 
 
 BDD :
-    espece maquante : coquette,Merlan,cernier
+
 
 Ajout session :
 
 
+maree :
+    pouvoir visualisé la maree sur les 7 prochain jour (garder en tete que l'api maree est limiter)
+
+
 Coté reseau sociale : 
-    Pouvoir épinglé des sessions sur son profil
-    géré la modération des images publiée (URGENT)
-    pouvoir mettre plusieurs photo pour une prise
+    pouvoir mettre plusieurs photo pour une prise (refaire car j'aime pas trop le systeme actuelle)
+    Laisser le systeme de session epinglé mais faire en sorte que ce soit pas les seules sessions visible sur le profil, et pouvoir sur son profil masquer des sessions pour les autres
+    Pouvoir mettre plus d'info sur son profil (experience, region, type de pecheur...) le rendre encore plus unique et personalisable
 
 Statistique : 
-    faire d'autre stat
+    Dans activité moyenne par heure les donnees sont bizare : ex pour 22h j'ai prise/session 0.09, je pense qu'il faudrait revoir la chose
+
+Visuel :
+    Sur telephone afficher plusieurs session sur une ligne dans le profil car 1 sa fait un peu etroit
+
+Carte de peche: :
+    Quand on telecharge la carte de peche sur cartedepeche.fr le qr code sur le pdf est a l'envers il faut trouver une solution pour que le site le detecte quand meme
+
+git : 
+    Mettre a jour le gitignore car il reste des fichier perdu de claude
+
+reglementation :
+    il faudrait pouvoir acceder aux différente reglementation car la il y a que les admins qui peuvent les voir via le panel de modification
