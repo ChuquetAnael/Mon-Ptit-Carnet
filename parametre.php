@@ -1,5 +1,6 @@
 <?php
 require_once './includes/auth_bdd.php';
+require_once './includes/carte_peche.php';
 
 $id_user = (int) $_SESSION['user_id'];
 $message_erreur = '';
@@ -7,6 +8,19 @@ $pdo = db();
 
 // VÉRIFICATION DES DROITS ADMINISTRATEUR (affichage du lien)
 $is_admin = est_admin($id_user);
+
+// =========================================================================
+// PARTAGE ANONYMISÉ DES PRISES (statistiques communautaires)
+// =========================================================================
+$message_succes = '';
+if (isset($_POST['partage_communaute'])) {
+    $partage = $_POST['partage_communaute'] === '1' ? 1 : 0;
+    $pdo->prepare("UPDATE utilisateur SET PARTAGE_COMMUNAUTE = ? WHERE ID_UTILISATEUR = ?")->execute([$partage, $id_user]);
+    $message_succes = $partage ? "Tes prises participent de nouveau aux statistiques communautaires (de façon anonyme)." : "Tes prises ne sont plus utilisées dans les statistiques communautaires.";
+}
+$stmtPartage = $pdo->prepare("SELECT PARTAGE_COMMUNAUTE FROM utilisateur WHERE ID_UTILISATEUR = ?");
+$stmtPartage->execute([$id_user]);
+$partage_actif = (int) $stmtPartage->fetchColumn() === 1;
 
 // =========================================================================
 // GESTION DE LA SUPPRESSION DU COMPTE
@@ -30,6 +44,7 @@ if (isset($_POST['delete_account']) && !empty($_POST['password_confirm'])) {
 
         // Fichiers supprimés une fois la base à jour (photos, avatar, bannière, fichiers orphelins)
         supprimer_dossier_utilisateur($id_user);
+        supprimer_dossier_prive($id_user); // carte de pêche
 
         $_SESSION = [];
         session_destroy();
@@ -81,6 +96,45 @@ if (isset($_POST['delete_account']) && !empty($_POST['password_confirm'])) {
                         <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
                     </div>
                 <?php endif; ?>
+
+                <?php if ($message_succes): ?>
+                    <div class="alert alert-success rounded-4 border-0 shadow-sm" role="status"><?= e($message_succes) ?></div>
+                <?php endif; ?>
+
+                <!-- Section : Au bord de l'eau -->
+                <h6 class="fw-bold text-secondary mb-3 ms-2 mt-2" style="font-size: 0.9rem;">Au bord de l'eau</h6>
+                <a href="carte_peche.php" class="text-decoration-none">
+                    <div class="card border-0 shadow-sm rounded-4 mb-3 bg-white settings-card p-3 d-flex flex-row align-items-center justify-content-between">
+                        <div class="d-flex align-items-center">
+                            <span class="material-symbols-rounded text-primary me-3" aria-hidden="true">badge</span>
+                            <span class="text-dark fw-semibold">Ma carte de pêche (hors-ligne)</span>
+                        </div>
+                        <span class="material-symbols-rounded text-muted" aria-hidden="true">chevron_right</span>
+                    </div>
+                </a>
+                <button type="button" data-action="theme" class="card border-0 shadow-sm rounded-4 mb-3 bg-white settings-card p-3 d-flex flex-row align-items-center justify-content-between w-100 text-start">
+                    <span class="d-flex align-items-center">
+                        <span class="material-symbols-rounded text-primary me-3" aria-hidden="true">light_mode</span>
+                        <span><span class="text-dark fw-semibold d-block">Mode plein soleil</span><small class="text-muted">Noir sur blanc, sans ombres : lisible en plein jour</small></span>
+                    </span>
+                    <span class="material-symbols-rounded text-muted" aria-hidden="true">contrast</span>
+                </button>
+                <form method="POST" class="card border-0 shadow-sm rounded-4 mb-4 bg-white p-3">
+                    <?= csrf_field() ?>
+                    <input type="hidden" name="partage_communaute" value="<?= $partage_actif ? '0' : '1' ?>">
+                    <div class="d-flex align-items-start gap-3">
+                        <span class="material-symbols-rounded text-primary" aria-hidden="true">groups</span>
+                        <div class="flex-grow-1">
+                            <span class="text-dark fw-semibold d-block">Statistiques communautaires</span>
+                            <small class="text-muted d-block mb-2">
+                                <?= $partage_actif
+                                    ? "Tes prises aident les autres pêcheurs, de façon anonyme : seules l'espèce, les conditions et une zone large (département, façade, cours d'eau) sont utilisées. Jamais tes spots ni ta position."
+                                    : "Tes prises ne sont pas utilisées dans les statistiques communautaires." ?>
+                            </small>
+                            <button class="btn btn-sm <?= $partage_actif ? 'btn-light' : 'btn-primary' ?> rounded-pill px-3"><?= $partage_actif ? 'Ne plus partager mes prises' : 'Partager mes prises anonymement' ?></button>
+                        </div>
+                    </div>
+                </form>
 
                 <!-- Section : Administration (Visible uniquement pour les Admins) -->
                 <?php if($is_admin): ?>

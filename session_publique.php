@@ -118,7 +118,7 @@ $url_retour = 'session_publique.php?id=' . (int) $id_session;
                             <?php endif; ?>
                             <div class="card-body p-4">
                                 <h2 class="h5 fw-bold text-dark mb-2 d-flex align-items-center">
-                                    <?php if ($p['ICONE_CHEMIN']): ?><img src="<?= e($p['ICONE_CHEMIN']) ?>" alt="" style="width: 28px; height: 28px; object-fit: contain;" class="me-2"><?php endif; ?>
+                                    <?php if ($p['ICONE_CHEMIN']): ?><img loading="lazy" src="<?= e(icone_legere($p['ICONE_CHEMIN'])) ?>" alt="" style="width: 28px; height: 28px; object-fit: contain;" class="me-2"><?php endif; ?>
                                     <?php if ((int) $p['QUANTITE'] > 1): ?><span class="badge bg-primary rounded-pill me-2">x<?= (int) $p['QUANTITE'] ?></span><?php endif; ?>
                                     <?= e($p['NOM_COM']) ?>
                                     <?php if ($p['RELACHE']): ?><span class="badge bg-success bg-opacity-10 text-success rounded-pill ms-auto">No-Kill</span><?php endif; ?>

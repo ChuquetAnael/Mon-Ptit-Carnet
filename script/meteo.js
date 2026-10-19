@@ -15,6 +15,12 @@ document.addEventListener('DOMContentLoaded', function() {
     const tideContainer = document.getElementById('tide-container');
     const loaderHtmlInitial = loader.innerHTML; // pour réafficher le spinner après une erreur
 
+    const vueDemandee = new URLSearchParams(location.search).get('vue');
+    if (['meteo', 'maree', 'riviere'].includes(vueDemandee)) {
+        const radio = document.querySelector(`input[name="viewToggle"][value="${vueDemandee}"]`);
+        if (radio) radio.checked = true;
+        ['meteo', 'maree', 'riviere'].forEach(v => document.getElementById('section-' + v).style.display = v === vueDemandee ? 'block' : 'none');
+    }
     document.querySelectorAll('input[name="viewToggle"]').forEach(radio => {
         radio.addEventListener('change', function() {
             document.getElementById('section-meteo').style.display = (this.value === 'meteo') ? 'block' : 'none';
@@ -76,7 +82,7 @@ document.addEventListener('DOMContentLoaded', function() {
                 return;
             }
 
-            riverContainer.innerHTML = `
+            riverContainer.innerHTML = blocVigilance(data) + `
             <div class="alert alert-info bg-info bg-opacity-10 border-0 rounded-4 mb-4 d-flex align-items-center">
                 <span class="material-symbols-rounded text-info me-3" style="font-size: 28px;">water</span>
                 <div>
@@ -113,6 +119,7 @@ document.addEventListener('DOMContentLoaded', function() {
             </div>
             `;
 
+            brancherSurveillance(data);
             if (riverChartInstance) riverChartInstance.destroy();
             const ctx = document.getElementById('riverChart').getContext('2d');
             Chart.defaults.font.family = "'Poppins', sans-serif";
@@ -148,6 +155,53 @@ document.addEventListener('DOMContentLoaded', function() {
             if (err.name === 'AbortError') return; 
             console.error(err);
             riverContainer.innerHTML = '<div class="alert alert-danger rounded-4 m-3">Erreur lors de la récupération de la station.</div>';
+        });
+    }
+
+    // ------------------------------------------------------------------
+    // Vigilance crues : niveau Vigicrues + montée brutale détectée sur les relevés récents
+    // ------------------------------------------------------------------
+    const COULEURS_VIGI = { vert: '#23704a', jaune: '#9a6a00', orange: '#c2410c', rouge: '#b42318' };
+    function blocVigilance(data) {
+        const a = data.alerte;
+        const code = data.code_station;
+        const suivie = window.MPC && MPC.stationSurveillee() && MPC.stationSurveillee().code === code;
+        let etat = '';
+        if (a) {
+            const vigi = a.vigicrues
+                ? `<span class="badge rounded-pill" style="background:${COULEURS_VIGI[a.vigicrues.couleur] || '#3f525a'}">Vigicrues : ${escapeHtml(a.vigicrues.couleur)}</span>`
+                : '<span class="badge rounded-pill bg-secondary">Vigicrues : tronçon non surveillé</span>';
+            const variation = a.variation_1h !== null && a.variation_1h !== undefined
+                ? `<small class="d-block mt-1">Sur 1 h : ${a.variation_1h > 0 ? '+' : ''}${a.variation_1h} ${a.grandeur === 'Q' ? '%' : 'cm'}${a.variation_3h !== null ? ` · sur 3 h : ${a.variation_3h > 0 ? '+' : ''}${a.variation_3h} ${a.grandeur === 'Q' ? '%' : 'cm'}` : ''}</small>` : '';
+            etat = a.niveau > 0
+                ? `<div class="alerte-terrain ${a.niveau >= 2 ? 'alerte-danger' : 'alerte-warning'} mb-3" role="alert">
+                       <span class="material-symbols-rounded" aria-hidden="true">flood</span>
+                       <div>${escapeHtml(a.titre)}<br><span style="font-weight:400">${escapeHtml(a.message)}</span>${variation}</div></div>`
+                : `<p class="mb-2"><span class="material-symbols-rounded align-middle text-success me-1" aria-hidden="true">check_circle</span>Pas de montée anormale détectée sur les derniers relevés.${variation}</p>`;
+            etat += `<p class="mb-3">${vigi}</p>`;
+        }
+        return `<div class="card border-0 shadow-sm rounded-4 p-3 mb-4">
+            <p class="fw-bold mb-2">Sécurité au bord de l'eau</p>
+            ${etat}
+            ${code ? `<button type="button" class="btn ${suivie ? 'btn-outline-primary' : 'btn-primary'} rounded-pill w-100" id="btn-surveiller" data-code="${escapeHtml(code)}" data-nom="${escapeHtml(data.station_name)}">
+                <span class="material-symbols-rounded align-middle me-1" aria-hidden="true">${suivie ? 'notifications_off' : 'notifications_active'}</span>${suivie ? 'Arrêter la surveillance' : 'Me prévenir si l\'eau monte'}</button>
+                <small class="d-block text-muted mt-2">Vérification toutes les 10 minutes tant que l'application est ouverte : bandeau, vibreur et notification. Ne remplace pas <a href="https://www.vigicrues.gouv.fr/" target="_blank" rel="noopener">Vigicrues</a> ni les consignes officielles.</small>` : ''}
+        </div>`;
+    }
+    function brancherSurveillance(data) {
+        const btn = document.getElementById('btn-surveiller');
+        if (!btn || !window.MPC) return;
+        btn.addEventListener('click', async () => {
+            const suivie = MPC.stationSurveillee() && MPC.stationSurveillee().code === btn.dataset.code;
+            if (suivie) {
+                MPC.arreterSurveillance();
+            } else {
+                await MPC.demanderNotifications();
+                MPC.surveillerStation(btn.dataset.code, btn.dataset.nom);
+                if (navigator.vibrate) navigator.vibrate(80);
+            }
+            document.getElementById('river-container').querySelector('.card').outerHTML = blocVigilance(data);
+            brancherSurveillance(data);
         });
     }
 

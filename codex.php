@@ -106,7 +106,7 @@ function minuscule(?string $texte): string
                         
                         <div class="mb-3 d-flex align-items-center justify-content-center" style="height: 80px; width: 100%;">
                             <?php if (!empty($espece['ICONE_CHEMIN'])): ?>
-                                <img src="<?= e($espece['ICONE_CHEMIN']) ?>" alt="<?= e($espece['NOM_COM']) ?>" style="max-height: 100%; max-width: 100%; object-fit: contain;">
+                                <img loading="lazy" src="<?= e(icone_legere($espece['ICONE_CHEMIN'])) ?>" alt="<?= e($espece['NOM_COM']) ?>" style="max-height: 100%; max-width: 100%; object-fit: contain;">
                             <?php else: ?>
                                 <span class="material-symbols-rounded text-secondary" style="font-size: 40px;">set_meal</span>
                             <?php endif; ?>
@@ -130,7 +130,7 @@ function minuscule(?string $texte): string
                             <div class="modal-body pt-1">
                                 <div class="text-center mb-3 bg-light rounded-4 py-3">
                                     <?php if (!empty($espece['ICONE_CHEMIN'])): ?>
-                                        <img src="<?= e($espece['ICONE_CHEMIN']) ?>" alt="Icône" style="max-height: 120px; object-fit: contain;">
+                                        <img loading="lazy" src="<?= e(icone_legere($espece['ICONE_CHEMIN'])) ?>" alt="Icône" style="max-height: 120px; object-fit: contain;">
                                     <?php else: ?>
                                         <span class="material-symbols-rounded text-secondary" style="font-size: 60px;">set_meal</span>
                                     <?php endif; ?>

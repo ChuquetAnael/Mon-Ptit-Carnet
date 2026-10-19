@@ -326,6 +326,27 @@ if ($coords = lire_localisation($session['LOCALISATION'])) {
                             </div>
                         </div>
                     </div>
+                    <?php
+                    // Conditions complètes (V0.3) : tendance barométrique et débit de la rivière
+                    $tend3 = $session['TENDANCE_PRESSION_3H'] ?? null;
+                    $ratio = $session['DEBIT_RATIO'] ?? null;
+                    ?>
+                    <?php if ($tend3 !== null || !empty($session['DEBIT_M3S'])): ?>
+                        <div class="d-flex flex-wrap gap-2 mt-3">
+                            <?php if ($tend3 !== null): ?>
+                                <span class="badge rounded-pill bg-light text-dark border fw-semibold p-2">
+                                    <span class="material-symbols-rounded align-middle me-1" style="font-size:18px"><?= $tend3 <= -1 ? 'trending_down' : ($tend3 >= 1 ? 'trending_up' : 'trending_flat') ?></span>
+                                    Pression <?= $tend3 <= -1 ? 'en baisse' : ($tend3 >= 1 ? 'en hausse' : 'stable') ?> (<?= e(($tend3 > 0 ? '+' : '') . str_replace('.', ',', (string) (float) $tend3)) ?> hPa / 3 h)
+                                </span>
+                            <?php endif; ?>
+                            <?php if (!empty($session['DEBIT_M3S'])): ?>
+                                <span class="badge rounded-pill bg-light text-dark border fw-semibold p-2">
+                                    <span class="material-symbols-rounded align-middle me-1" style="font-size:18px">water</span>
+                                    <?= e(str_replace('.', ',', (string) round((float) $session['DEBIT_M3S'], 1))) ?> m³/s<?= $ratio !== null ? ' · ×' . e(str_replace('.', ',', (string) (float) $ratio)) . ' la normale' : '' ?><?= !empty($session['COURS_EAU']) ? ' · ' . e($session['COURS_EAU']) : '' ?>
+                                </span>
+                            <?php endif; ?>
+                        </div>
+                    <?php endif; ?>
                 </div>
 
                 <!-- GALERIE DES PRISES -->
@@ -387,7 +408,7 @@ if ($coords = lire_localisation($session['LOCALISATION'])) {
                                         <?php endif; ?>
                                     <?php elseif (!empty($p['ICONE_CHEMIN'])): ?>
                                         <div class="bg-light d-flex align-items-center justify-content-center catch-img border-bottom p-4">
-                                            <img src="<?= e($p['ICONE_CHEMIN']) ?>" alt="<?= e($p['NOM_COM']) ?>" style="width: 100%; height: 100%; object-fit: contain;">
+                                            <img loading="lazy" src="<?= e(icone_legere($p['ICONE_CHEMIN'])) ?>" alt="<?= e($p['NOM_COM']) ?>" style="width: 100%; height: 100%; object-fit: contain;">
                                         </div>
                                     <?php else: ?>
                                         <div class="bg-light d-flex align-items-center justify-content-center catch-img border-bottom">
@@ -399,7 +420,7 @@ if ($coords = lire_localisation($session['LOCALISATION'])) {
                                         <div class="d-flex justify-content-between align-items-start mb-2 pe-5">
                                             <h5 class="fw-bold text-dark mb-0 d-flex align-items-center">
                                                 <?php if(!empty($p['ICONE_CHEMIN'])): ?>
-                                                    <img src="<?= e($p['ICONE_CHEMIN']) ?>" alt="Icone" style="width: 25px; height: 25px; object-fit: contain;" class="me-2">
+                                                    <img loading="lazy" src="<?= e(icone_legere($p['ICONE_CHEMIN'])) ?>" alt="Icone" style="width: 25px; height: 25px; object-fit: contain;" class="me-2">
                                                 <?php endif; ?>
                                                 
                                                 <?php 

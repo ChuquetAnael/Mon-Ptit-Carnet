@@ -1,5 +1,6 @@
 <?php
 require_once './includes/auth_bdd.php';
+require_once './includes/geo.php';
 
 $pdo = db();
 $id_user = (int) $_SESSION['user_id'];
@@ -15,10 +16,21 @@ if (isset($_POST['add_spot'])) {
         $message_erreur = "Indique un nom (50 caractères max) et un type de milieu.";
     } else {
         $localisation = localisation_ou_null($_POST['lat'] ?? null, $_POST['lng'] ?? null);
-        $stmt = $pdo->prepare("INSERT INTO spot (ID_UTILISATEUR, ID_TYPE_SPOT, NOM_SPOT, LOCALISATION) VALUES (?, ?, ?, ?)");
-        $stmt->execute([$id_user, $type, $nom, $localisation]);
+        $coords = lire_localisation($localisation);
+        $categorie = ($type <= TYPES_SPOT_EAU_DOUCE_MAX && in_array($_POST['categorie_piscicole'] ?? '', ['1', '2'], true)) ? (int) $_POST['categorie_piscicole'] : null;
+        $stmt = $pdo->prepare("INSERT INTO spot (ID_UTILISATEUR, ID_TYPE_SPOT, NOM_SPOT, LOCALISATION, CATEGORIE_PISCICOLE, CODE_DEPARTEMENT) VALUES (?, ?, ?, ?, ?, ?)");
+        $stmt->execute([$id_user, $type, $nom, $localisation, $categorie, $coords ? departement_coords($coords[0], $coords[1]) : null]);
         $message = "Spot ajouté avec succès !";
     }
+}
+
+// 1 bis. CATÉGORIE PISCICOLE D'UN SPOT (utilisée par les alertes de réglementation)
+if (isset($_POST['set_categorie'])) {
+    $id_spot = id_ou_null($_POST['id_spot'] ?? null);
+    $categorie = in_array($_POST['categorie_piscicole'] ?? '', ['1', '2'], true) ? (int) $_POST['categorie_piscicole'] : null;
+    $pdo->prepare("UPDATE spot SET CATEGORIE_PISCICOLE = ? WHERE ID_SPOT = ? AND ID_UTILISATEUR = ? AND ID_TYPE_SPOT <= ?")
+        ->execute([$categorie, $id_spot, $id_user, TYPES_SPOT_EAU_DOUCE_MAX]);
+    $message = "Catégorie du spot enregistrée.";
 }
 
 // 2. GESTION DE LA SUPPRESSION D'UN SPOT (on vérifie d'abord qu'il appartient à l'utilisateur)
@@ -37,7 +49,7 @@ if (isset($_POST['delete_spot'])) {
 
 // 3. RÉCUPÉRATION DES DONNÉES
 $stmtSpots = $pdo->prepare("
-    SELECT s.ID_SPOT, s.NOM_SPOT, s.LOCALISATION, t.NOM_TYPE_SPOT 
+    SELECT s.ID_SPOT, s.NOM_SPOT, s.LOCALISATION, s.ID_TYPE_SPOT, s.CATEGORIE_PISCICOLE, t.NOM_TYPE_SPOT
     FROM spot s
     LEFT JOIN type_spot t ON s.ID_TYPE_SPOT = t.ID_TYPE_SPOT
     WHERE s.ID_UTILISATEUR = ?
@@ -149,6 +161,18 @@ $types_spot = $pdo->query("SELECT ID_TYPE_SPOT, NOM_TYPE_SPOT FROM type_spot ORD
                                 <span class="badge bg-success bg-opacity-10 text-success fw-medium">
                                     <?= e($spot['NOM_TYPE_SPOT'] ?? 'Non précisé') ?>
                                 </span>
+                                <?php if ((int) $spot['ID_TYPE_SPOT'] <= TYPES_SPOT_EAU_DOUCE_MAX): ?>
+                                    <form method="POST" class="d-inline-block mt-2">
+                                        <?= csrf_field() ?>
+                                        <input type="hidden" name="id_spot" value="<?= (int) $spot['ID_SPOT'] ?>">
+                                        <input type="hidden" name="set_categorie" value="1">
+                                        <select name="categorie_piscicole" class="form-select form-select-sm d-inline-block w-auto" aria-label="Catégorie piscicole de <?= e($spot['NOM_SPOT']) ?>" onchange="this.form.submit()">
+                                            <option value="" <?= $spot['CATEGORIE_PISCICOLE'] === null ? 'selected' : '' ?>>Catégorie ?</option>
+                                            <option value="1" <?= (int) $spot['CATEGORIE_PISCICOLE'] === 1 ? 'selected' : '' ?>>1re catégorie</option>
+                                            <option value="2" <?= (int) $spot['CATEGORIE_PISCICOLE'] === 2 ? 'selected' : '' ?>>2e catégorie</option>
+                                        </select>
+                                    </form>
+                                <?php endif; ?>
                             </div>
                             <div class="d-flex gap-2">
                                 <!-- Bouton pour centrer la carte sur ce spot -->
@@ -201,6 +225,15 @@ $types_spot = $pdo->query("SELECT ID_TYPE_SPOT, NOM_TYPE_SPOT FROM type_spot ORD
                                 <?php foreach($types_spot as$ts): ?>
                                     <option value="<?= (int) $ts['ID_TYPE_SPOT'] ?>"><?= e($ts['NOM_TYPE_SPOT']) ?></option>
                                 <?php endforeach; ?>
+                            </select>
+                        </div>
+
+                        <div class="mb-4">
+                            <label class="form-label text-secondary small fw-medium">Catégorie piscicole (eau douce)</label>
+                            <select class="form-select bg-light border-0 p-3 rounded-3" name="categorie_piscicole">
+                                <option value="">Je ne sais pas / en mer</option>
+                                <option value="1">1re catégorie (eaux à truites)</option>
+                                <option value="2">2e catégorie (autres eaux)</option>
                             </select>
                         </div>
 

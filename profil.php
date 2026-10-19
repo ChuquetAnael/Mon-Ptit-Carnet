@@ -189,7 +189,7 @@ $url_retour = 'profil.php?id=' . $id_profil;
                                 <div class="col-12 col-md-4">
                                     <a href="<?= $est_moi ? 'detail_session.php' : 'session_publique.php' ?>?id=<?= (int) $sess['ID_SESSION'] ?>" class="text-decoration-none text-dark d-block h-100 hover-card">
                                         <div class="card border-0 shadow-sm rounded-4 bg-white overflow-hidden h-100">
-                                            <?php $img = $sess['premiere_photo'] ?: $sess['TYPE_SES_ICONE_CHEMIN']; ?>
+                                            <?php $img = $sess['premiere_photo'] ?: icone_legere($sess['TYPE_SES_ICONE_CHEMIN']); ?>
                                             <?php if ($img): ?>
                                                 <img src="<?= e($img) ?>" class="card-img-top w-100" style="height: 150px; object-fit: cover;" alt="Session épinglée">
                                             <?php endif; ?>
@@ -238,7 +238,7 @@ $url_retour = 'profil.php?id=' . $id_profil;
                                                     <?php if(!empty($sess['premiere_photo'])): ?>
                                                         <img src="<?= e($sess['premiere_photo']) ?>" class="card-img-top w-100" style="height: 220px; object-fit: cover;" alt="Photo session">
                                                     <?php elseif(!empty($sess['TYPE_SES_ICONE_CHEMIN'])): ?>
-                                                        <img src="<?= e($sess['TYPE_SES_ICONE_CHEMIN']) ?>" class="card-img-top w-100" style="height: 220px; object-fit: cover;" alt="Illustration session">
+                                                        <img loading="lazy" src="<?= e(icone_legere($sess['TYPE_SES_ICONE_CHEMIN'])) ?>" class="card-img-top w-100" style="height: 220px; object-fit: cover;" alt="Illustration session">
                                                     <?php else: ?>
                                                         <div class="bg-light d-flex align-items-center justify-content-center w-100" style="height: 220px;">
                                                             <span class="material-symbols-rounded text-muted" style="font-size: 60px;">no_photography</span>
@@ -309,7 +309,7 @@ $url_retour = 'profil.php?id=' . $id_profil;
                                         <div class="card border-0 shadow-sm rounded-4 p-3 d-flex flex-row align-items-center bg-white hover-card">
                                             <div class="bg-light rounded-3 p-2 me-3 d-flex justify-content-center align-items-center" style="width: 70px; height: 70px;">
                                                 <?php if(!empty($rec['ICONE_CHEMIN'])): ?>
-                                                    <img src="<?= e($rec['ICONE_CHEMIN']) ?>" alt="Icone" style="max-width: 100%; max-height: 100%; object-fit: contain;">
+                                                    <img loading="lazy" src="<?= e(icone_legere($rec['ICONE_CHEMIN'])) ?>" alt="Icone" style="max-width: 100%; max-height: 100%; object-fit: contain;">
                                                 <?php else: ?>
                                                     <span class="material-symbols-rounded text-secondary" style="font-size: 40px;">set_meal</span>
                                                 <?php endif; ?>
@@ -335,21 +335,7 @@ $url_retour = 'profil.php?id=' . $id_profil;
 
     <?php if (!$est_moi) include './includes/modal_signalement.php'; ?>
 
-    <nav class="navbar fixed-bottom bg-white custom-navbar border-0 shadow-lg">
-        <div class="container-fluid d-flex justify-content-around align-items-end px-2">
-            <a href="accueil.php" class="nav-item d-flex flex-column align-items-center text-secondary text-decoration-none">
-                <span class="material-symbols-rounded">home</span>
-                <span class="menu-text" style="font-size: 0.75rem;">Accueil</span>
-            </a>
-            <a href="nouvelle_session.php" class="btn-add-catch">
-                <span class="material-symbols-rounded text-white" style="font-size: 36px;">phishing</span>
-            </a>
-            <a href="profil.php" class="nav-item <?= $est_moi ? 'active text-primary' : 'text-secondary' ?> d-flex flex-column align-items-center text-decoration-none">
-                <span class="material-symbols-rounded">person</span>
-                <span class="menu-text" style="font-size: 0.75rem;">Profil</span>
-            </a>
-        </div>
-    </nav>
+    <?php include './includes/navbar.php'; ?>
 
     <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/js/bootstrap.bundle.min.js"></script>
     

@@ -1,12 +1,28 @@
 <?php
-// Proxy JSON vers l'API Hub'eau (hydrométrie) : réservé aux membres connectés.
+// Proxy JSON vers l'API Hub'eau (hydrométrie) et Vigicrues : réservé aux membres connectés.
+//   ?lat&lng                      : état de la rivière la plus proche (page Météo)
+//   ?action=surveillance&station  : niveau d'alerte d'une station surveillée (appelé toutes les 10 min)
+//   ?action=session&lat&lng&date  : débit au début d'une session (conditions gagnantes)
 require_once './includes/bootstrap.php';
+require_once './includes/hydro.php';
 
 if (!utilisateur_id()) {
     json_out(['error' => 'Session expirée, reconnecte-toi.'], 401);
 }
 session_write_close();
 header('Content-Type: application/json; charset=UTF-8');
+
+$action = $_GET['action'] ?? '';
+if ($action === 'surveillance') {
+    $code = code_station_valide($_GET['station'] ?? null);
+    if (!$code) json_out(['error' => 'Station invalide.'], 400);
+    try {
+        json_out(surveillance_station($code));
+    } catch (Throwable $e) {
+        error_log('[MonPtitCarnet] surveillance : ' . $e->getMessage());
+        json_out(['error' => 'Surveillance indisponible pour le moment.'], 502);
+    }
+}
 
 $lat_num = nombre_ou_null($_GET['lat'] ?? null, -90, 90);
 $lng_num = nombre_ou_null($_GET['lng'] ?? null, -180, 180);
@@ -16,6 +32,21 @@ if ($lat_num === null || $lng_num === null) {
 $lat_user = number_format($lat_num, 6, '.', '');
 $lng_user = number_format($lng_num, 6, '.', '');
 
+if ($action === 'session') {
+    $dt = datetime_ou_null($_GET['date'] ?? '');
+    if (!$dt) json_out(['error' => 'Date invalide.'], 400);
+    try {
+        $debit = debit_pour_session($lat_num, $lng_num, $dt);
+        if (!$debit) json_out(['error' => 'Aucun débit mesuré à proximité pour cette date.']);
+        // Session en cours : on vérifie aussi qu'aucune montée d'eau n'est en cours
+        if (abs(strtotime($dt) - time()) < 3 * 3600) $debit['alerte'] = surveillance_station($debit['station']);
+        json_out($debit);
+    } catch (Throwable $e) {
+        error_log('[MonPtitCarnet] debit session : ' . $e->getMessage());
+        json_out(['error' => 'Débit indisponible.'], 502);
+    }
+}
+
 /** Appel Hub'eau (TLS vérifié, gzip géré par cURL). Retourne le JSON décodé ou null. */
 function fetchHubeau($url, $timeout = 10) {
     $result = http_get($url, $timeout);
@@ -23,16 +54,12 @@ function fetchHubeau($url, $timeout = 10) {
 }
 
 function distanceKm($lat1, $lon1, $lat2, $lon2) {
-    $earth_radius = 6371; 
-    $dLat = deg2rad($lat2 - $lat1);
-    $dLon = deg2rad($lon2 - $lon1);
-    $a = sin($dLat/2) * sin($dLat/2) + cos(deg2rad($lat1)) * cos(deg2rad($lat2)) * sin($dLon/2) * sin($dLon/2);
-    return $earth_radius * (2 * asin(sqrt($a)));
+    return distance_km((float) $lat1, (float) $lon1, (float) $lat2, (float) $lon2);
 }
 
 try {
     // ÉTAPE 1 : Chercher les stations proches (On repasse à 30 km et on laisse 15 secondes au serveur)
-    $urlStations = "https://hubeau.eaufrance.fr/api/v2/hydrometrie/referentiel/stations?latitude={$lat_user}&longitude={$lng_user}&distance=30&size=20&en_service=true";
+    $urlStations = API_HUBEAU . "/referentiel/stations?latitude={$lat_user}&longitude={$lng_user}&distance=30&size=20&en_service=true";
     $dataStations = fetchHubeau($urlStations, 15);
 
     if (!$dataStations || empty($dataStations['data'])) {
@@ -64,7 +91,7 @@ try {
     $grandeurElab = 'QmJ';
 
     // ÉTAPE 2 : PLAN A - On force la recherche stricte sur le DÉBIT (Q)
-    $urlTrQ = "https://hubeau.eaufrance.fr/api/v2/hydrometrie/observations_tr?code_entite={$codesStr}&grandeur_hydro=Q&size=1500&sort=desc";
+    $urlTrQ = API_HUBEAU . "/observations_tr?code_entite={$codesStr}&grandeur_hydro=Q&size=1500&sort=desc";
     $dataTrQ = fetchHubeau($urlTrQ, 8);
     
     if ($dataTrQ && !empty($dataTrQ['data'])) {
@@ -87,7 +114,7 @@ try {
 
     // ÉTAPE 3 : PLAN B - Si vraiment aucun débit, on se rabat sur la HAUTEUR (H)
     if (!$validStation) {
-        $urlTrH = "https://hubeau.eaufrance.fr/api/v2/hydrometrie/observations_tr?code_entite={$codesStr}&grandeur_hydro=H&size=1500&sort=desc";
+        $urlTrH = API_HUBEAU . "/observations_tr?code_entite={$codesStr}&grandeur_hydro=H&size=1500&sort=desc";
         $dataTrH = fetchHubeau($urlTrH, 8);
 
         if ($dataTrH && !empty($dataTrH['data'])) {
@@ -122,7 +149,7 @@ try {
 
     // ÉTAPE 4 : Statistiques (Élaborées)
     $code = $validStation['code_station'];
-    $urlElab = "https://hubeau.eaufrance.fr/api/v2/hydrometrie/observations_elaborees?code_entite={$code}&grandeur_hydro_elab={$grandeurElab}&size=30&sort=desc";
+    $urlElab = API_HUBEAU . "/observations_elaborees?code_entite={$code}&grandeur_hydro_elab={$grandeurElab}&size=30&sort=desc";
     
     $dataElab = fetchHubeau($urlElab, 5);
 
@@ -144,7 +171,7 @@ try {
     } else {
         // Si l'API élaborée est vide, on télécharge un historique raisonnable (1000 relevés = ~5 jours)
         // Cela empêche l'API de crasher, tout en gardant une belle courbe dans ton interface !
-        $urlFullTr = "https://hubeau.eaufrance.fr/api/v2/hydrometrie/observations_tr?code_entite={$code}&grandeur_hydro={$typeMesure}&size=1000&sort=desc";
+        $urlFullTr = API_HUBEAU . "/observations_tr?code_entite={$code}&grandeur_hydro={$typeMesure}&size=1000&sort=desc";
         $dataFullTr = fetchHubeau($urlFullTr, 6);
         
         $sourceObs = ($dataFullTr && isset($dataFullTr['data'])) ? $dataFullTr['data'] : $obsTr;
@@ -201,7 +228,18 @@ try {
         $trend = "En Décrue"; $trendIcon = "trending_down"; $trendColor = "text-success"; 
     }
 
+    // Alerte crue (variation récente + Vigicrues) pour la station retenue
+    $alerte = null;
+    try {
+        if ($code_valide = code_station_valide($code)) $alerte = surveillance_station($code_valide);
+    } catch (Throwable $e) {
+        error_log('[MonPtitCarnet] alerte riviere : ' . $e->getMessage());
+    }
+
     echo json_encode([
+        'code_station' => $code,
+        'cours_eau' => $validStation['libelle_cours_eau'] ?? '',
+        'alerte' => $alerte,
         'station_name' => $validStation['libelle_station'] ?? 'Inconnue',
         'distance' => round($validStation['distance_calculee'], 1),
         'current_flow' => round($currentValue, 2),

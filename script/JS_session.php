@@ -65,6 +65,11 @@
 
 <!-- SCRIPT ÉTAPE 2 : LEAFLET ET MÉTÉO -->
 <?php if ($etape === 2): ?>
+<script>
+    // Type et catégorie des spots (sans coordonnées) et zones de réserve publiques
+    window.MPC_SPOTS = <?= js((object) $infos_spots) ?>;
+    window.MPC_RESERVES = <?= js($reserves_carte) ?>;
+</script>
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
 <?php endif; ?>
 
@@ -80,7 +85,9 @@
     const typesLeurre = <?= js($types_leurre) ?>;
     const typesAppat = <?= js($types_appat) ?>;
     const PHOTOS_MAX_PAR_PRISE = <?= (int) PHOTOS_MAX_PAR_PRISE ?>;
+    const GARDE_FOU = <?= js($garde_fou) ?>;
 </script>
+<script src="script/reglementation.js"></script>
 
 <!-- 2. CHARGEMENT DU FICHIER EXTERNE AVANT SON UTILISATION (escapeHtml, boîte de pêche) -->
 <script src="script/gestion_prise.js"></script>
@@ -213,9 +220,10 @@
             </div>
 
             <div class="form-check form-switch mt-4 bg-light p-3 rounded-4 d-flex align-items-center">
-                <input class="form-check-input ms-0 me-3" type="checkbox" name="prises[${i}][relache]" id="relache${i}" checked style="transform: scale(1.3);">
+                <input class="form-check-input ms-0 me-3 input-relache" type="checkbox" name="prises[${i}][relache]" id="relache${i}" checked style="transform: scale(1.3);">
                 <label class="form-check-label fw-bold text-success mb-0" for="relache${i}">Poisson relâché (No-Kill)</label>
             </div>
+            <div class="regle-alertes mt-3" aria-live="polite"></div>
         </div>`;
 
         const container = document.getElementById('catches-container');
@@ -224,6 +232,36 @@
         if (!isNoPhoto) addPhotoToCard(card, photoObj.chemin);
 
         attachDropdownEvents();
+        card.addEventListener('input', verifierToutesLesPrises);
+        card.addEventListener('change', verifierToutesLesPrises);
+        card.querySelectorAll('.espece-option').forEach(o => o.addEventListener('click', () => setTimeout(verifierToutesLesPrises, 0)));
+        verifierToutesLesPrises();
+    }
+
+    // Garde-fou réglementaire : les cartes sont évaluées dans l'ordre (les quotas se cumulent)
+    function verifierToutesLesPrises() {
+        const gardes = Object.assign({}, GARDE_FOU.gardes);
+        document.querySelectorAll('.catch-card').forEach(card => {
+            const i = card.dataset.index;
+            const espece = parseInt(card.querySelector('.hidden-espece-input').value, 10);
+            const zone = card.querySelector('.regle-alertes');
+            if (!espece) { zone.innerHTML = ''; return; }
+            const relache = card.querySelector('.input-relache');
+            const prise = {
+                espece,
+                taille: card.querySelector(`[name="prises[${i}][taille]"]`).value,
+                quantite: card.querySelector(`[name="prises[${i}][quantite]"]`).value,
+                relache: relache.checked,
+            };
+            const confirme = !!zone.querySelector('input[type="checkbox"]:checked');
+            const alertes = Reglementation.controler(GARDE_FOU.regles, GARDE_FOU.contexte, prise, gardes);
+            Reglementation.afficher(zone, alertes, `prises[${i}][confirme_regles]`, confirme, () => {
+                relache.checked = true;
+                verifierToutesLesPrises();
+            });
+            card.classList.toggle('catch-card-alerte', alertes.some(a => a.bloquant));
+            if (!prise.relache) gardes[espece] = (gardes[espece] || 0) + Math.max(1, parseInt(prise.quantite, 10) || 1);
+        });
     }
 
     const photosToLoad = <?= js($photos) ?>;
@@ -255,6 +293,17 @@
         if (!allValid) {
             e.preventDefault();
             alert("Erreur : Veuillez sélectionner l'espèce pour chaque prise (encadré en rouge).");
+            return;
+        }
+
+        // Une prise gardée hors réglementation doit être relâchée ou confirmée explicitement
+        verifierToutesLesPrises();
+        const nonConfirmee = [...cards].find(card => card.classList.contains('catch-card-alerte')
+            && !card.querySelector('.regle-alertes input[type="checkbox"]:checked'));
+        if (nonConfirmee) {
+            e.preventDefault();
+            nonConfirmee.scrollIntoView({ behavior: 'smooth', block: 'center' });
+            if (navigator.vibrate) navigator.vibrate(200);
             return;
         }
         document.getElementById('submit-final').disabled = true; // évite le double envoi

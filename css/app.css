@@ -1,0 +1,302 @@
+/* =========================================================================
+   Mon P'tit Carnet — thème « carnet étanche » (V0.3)
+   Pensé pour le bord de l'eau : texte très contrasté lisible au soleil,
+   cibles tactiles de 48 px, actions principales dans la zone du pouce.
+   Chargé après Bootstrap et après les feuilles de style des pages.
+   ========================================================================= */
+:root {
+    --encre: #0e2a33;          /* texte et en-têtes : bleu-noir de rivière profonde */
+    --ardoise: #1f5a66;        /* couleur principale : eau d'ardoise */
+    --ardoise-clair: #e3eef0;
+    --bouee: #c4430c;          /* orange bouée (5:1 avec le blanc) : l'action « Prise » et les alertes de sécurité */
+    --bouee-fonce: #9a3412;
+    --eau-claire: #eef3f2;     /* fond */
+    --papier: #ffffff;
+    --texte-doux: #3f525a;     /* contraste 7,9:1 sur blanc */
+    --mousse: #23704a;         /* no-kill, réussite */
+    --signal: #b42318;         /* danger */
+    --ambre: #8a5300;          /* avertissement (texte) */
+    --ambre-fond: #fff4e0;
+    --trait: #c9d6d9;
+    --rayon: 16px;
+    --rayon-petit: 10px;
+    --barre-bas: 72px;
+    --zone-sure-bas: env(safe-area-inset-bottom, 0px);
+
+    --bs-primary: var(--ardoise);
+    --bs-primary-rgb: 31, 90, 102;
+    --bs-body-color: var(--encre);
+    --bs-body-bg: var(--eau-claire);
+    --bs-secondary-color: var(--texte-doux);
+    --bs-border-radius: var(--rayon-petit);
+    --bs-link-color: var(--ardoise);
+    --bs-link-color-rgb: 31, 90, 102;
+    --bs-link-hover-color: var(--encre);
+    --bs-focus-ring-color: rgba(196, 67, 12, .45);
+}
+
+/* Mode « plein soleil » : blanc pur, noir pur, bordures franches, aucune ombre */
+html[data-theme="soleil"] {
+    --encre: #000000;
+    --ardoise: #003b47;
+    --eau-claire: #ffffff;
+    --texte-doux: #1d2a2f;
+    --trait: #000000;
+    --ardoise-clair: #ffffff;
+}
+html[data-theme="soleil"] .card,
+html[data-theme="soleil"] .form-control,
+html[data-theme="soleil"] .form-select,
+html[data-theme="soleil"] .catch-card {
+    border: 2px solid #000 !important;
+    box-shadow: none !important;
+    background-color: #fff !important;
+}
+html[data-theme="soleil"] .bg-light { background-color: #fff !important; }
+html[data-theme="soleil"] .shadow-sm, html[data-theme="soleil"] .shadow, html[data-theme="soleil"] .shadow-lg { box-shadow: none !important; }
+
+/* ---------------------------------------------------------------- Base */
+html { -webkit-text-size-adjust: 100%; }
+body {
+    font-family: 'Atkinson Hyperlegible', system-ui, -apple-system, 'Segoe UI', sans-serif !important;
+    font-size: 1.0625rem;
+    line-height: 1.5;
+    color: var(--encre);
+    background-color: var(--eau-claire);
+    padding-bottom: calc(var(--barre-bas) + var(--zone-sure-bas) + 28px) !important;
+    -webkit-tap-highlight-color: rgba(196, 67, 12, .15);
+}
+h1, h2, h3, h4, h5, h6, .h1, .h2, .h3, .h4, .h5, .h6 { font-family: inherit; letter-spacing: -.01em; color: inherit; }
+.text-muted, .text-secondary { color: var(--texte-doux) !important; }
+.text-primary { color: var(--ardoise) !important; }
+.text-success { color: var(--mousse) !important; }
+.text-danger { color: var(--signal) !important; }
+.bg-light { background-color: #f4f8f8 !important; }
+small, .small { font-size: .875em; }
+.text-uppercase { text-transform: none !important; letter-spacing: 0 !important; }
+
+:focus-visible { outline: 3px solid var(--bouee) !important; outline-offset: 2px; }
+@media (prefers-reduced-motion: reduce) {
+    *, *::before, *::after { transition: none !important; animation: none !important; scroll-behavior: auto !important; }
+}
+
+/* ---------------------------------------------------------------- En-têtes de page
+   Aplat d'encre plutôt que dégradé : meilleur contraste du titre en plein jour */
+body .custom-header,
+body .top-bar-meteo,
+body .top-bar-stats,
+body .top-bar-admin,
+body .top-bar-profil {
+    background: var(--encre) !important;
+    color: #fff;
+    border-bottom-left-radius: 22px;
+    border-bottom-right-radius: 22px;
+    padding-top: calc(1.1rem + env(safe-area-inset-top, 0px)) !important;
+    padding-bottom: 1.1rem !important;
+}
+body .custom-header a, body .top-bar-meteo a, body .top-bar-stats a, body .top-bar-admin a {
+    min-width: 44px; min-height: 44px; display: inline-flex; align-items: center; justify-content: center;
+}
+
+/* ---------------------------------------------------------------- Cartes et formulaires */
+.card { border-radius: var(--rayon) !important; }
+.rounded-4 { border-radius: var(--rayon) !important; }
+.form-control, .form-select {
+    min-height: 48px;
+    font-size: 1rem;              /* 16 px : évite le zoom automatique d'iOS */
+    color: var(--encre);
+    border: 1.5px solid var(--trait) !important;
+    background-color: #fff;
+}
+.form-control.bg-light, .form-select.bg-light { background-color: #f6f9f9 !important; }
+.form-control.border-0, .form-select.border-0 { border: 1.5px solid var(--trait) !important; }
+.form-control:focus, .form-select:focus { border-color: var(--ardoise) !important; box-shadow: 0 0 0 3px rgba(31, 90, 102, .2) !important; }
+.form-label { font-weight: 700; color: var(--encre) !important; font-size: .9rem; }
+.form-check-input { width: 1.4em; height: 1.4em; border: 2px solid var(--texte-doux); }
+.form-check-input:checked { background-color: var(--ardoise); border-color: var(--ardoise); }
+.form-switch .form-check-input { width: 2.6em; }
+.form-switch .form-check-input:checked { background-color: var(--mousse); border-color: var(--mousse); }
+
+/* ---------------------------------------------------------------- Boutons : retour tactile net */
+.btn { min-height: 44px; font-weight: 700; transition: transform .08s ease, filter .12s ease, background-color .12s ease; }
+.btn:active { transform: scale(.97); filter: brightness(.92); }
+.btn-lg { min-height: 54px; font-size: 1.1rem; }
+.btn-primary, .custom-btn-submit {
+    --bs-btn-bg: var(--ardoise); --bs-btn-border-color: var(--ardoise);
+    --bs-btn-hover-bg: var(--encre); --bs-btn-hover-border-color: var(--encre);
+    --bs-btn-active-bg: var(--encre); --bs-btn-active-border-color: var(--encre);
+    --bs-btn-disabled-bg: #7d979d; --bs-btn-disabled-border-color: #7d979d;
+    background: var(--ardoise) !important; border-color: var(--ardoise) !important; color: #fff !important;
+}
+.btn-primary:hover, .custom-btn-submit:hover { background: var(--encre) !important; }
+.btn-success { --bs-btn-bg: var(--mousse); --bs-btn-border-color: var(--mousse); --bs-btn-hover-bg: #1a5738; --bs-btn-active-bg: #1a5738; }
+.btn-outline-primary { --bs-btn-color: var(--ardoise); --bs-btn-border-color: var(--ardoise); --bs-btn-hover-bg: var(--ardoise); --bs-btn-hover-border-color: var(--ardoise); --bs-btn-active-bg: var(--encre); }
+.btn:disabled { opacity: .75; }
+
+/* ---------------------------------------------------------------- Barre de navigation du bas
+   Cinq cibles dans la zone du pouce ; la bouée orange « Prise » est l'élément fort de l'interface */
+.barre-pouce {
+    position: fixed; left: 0; right: 0; bottom: 0; z-index: 1030;
+    height: calc(var(--barre-bas) + var(--zone-sure-bas));
+    padding: 6px 6px var(--zone-sure-bas);
+    background: var(--papier);
+    border-top: 1px solid var(--trait);
+    display: grid; grid-template-columns: repeat(5, 1fr); align-items: center;
+}
+html[data-theme="soleil"] .barre-pouce { border-top: 2px solid #000; }
+.barre-pouce a {
+    display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 2px;
+    min-height: 56px; border-radius: 14px;
+    color: var(--texte-doux); text-decoration: none; font-size: .78rem; font-weight: 700;
+}
+.barre-pouce a .material-symbols-rounded { font-size: 28px; }
+.barre-pouce a[aria-current="page"] { color: var(--ardoise); background: var(--ardoise-clair); }
+.barre-pouce a[aria-current="page"] .material-symbols-rounded { font-variation-settings: 'FILL' 1, 'wght' 500, 'GRAD' 0, 'opsz' 24; }
+.barre-pouce a:active { background: var(--ardoise-clair); }
+.barre-pouce .bouee {
+    width: 70px; height: 70px; margin: -30px auto 0;
+    border-radius: 50%;
+    background: var(--bouee);
+    color: #fff;
+    border: 5px solid var(--eau-claire);
+    box-shadow: 0 6px 16px rgba(196, 67, 12, .45);
+    font-size: .72rem;
+}
+.barre-pouce .bouee .material-symbols-rounded { font-size: 32px; font-variation-settings: 'FILL' 1, 'wght' 600, 'GRAD' 0, 'opsz' 24; }
+.barre-pouce .bouee:active { background: var(--bouee-fonce); transform: scale(.95); }
+html[data-theme="soleil"] .barre-pouce .bouee { border-color: #000; box-shadow: none; }
+/* Ancienne barre (pages non encore migrées) : masquée si la nouvelle est présente */
+.barre-pouce ~ .custom-navbar, .custom-navbar:has(~ .barre-pouce) { display: none !important; }
+
+/* Sélecteur de vue placé au-dessus de la barre du bas (atteignable au pouce) */
+.selecteur-vue {
+    position: fixed; left: 50%; transform: translateX(-50%);
+    bottom: calc(var(--barre-bas) + var(--zone-sure-bas) + 10px);
+    z-index: 1020; width: min(420px, calc(100% - 24px));
+    display: flex; gap: 4px; padding: 5px;
+    background: var(--encre); border-radius: 999px;
+    box-shadow: 0 6px 18px rgba(14, 42, 51, .3);
+}
+.selecteur-vue input { position: absolute; opacity: 0; pointer-events: none; }
+.selecteur-vue label {
+    flex: 1; min-height: 46px; display: flex; align-items: center; justify-content: center; gap: 6px;
+    border-radius: 999px; color: #d9e6e8; font-weight: 700; cursor: pointer; font-size: .95rem;
+}
+.selecteur-vue input:checked + label { background: #fff; color: var(--encre); }
+.selecteur-vue input:focus-visible + label { outline: 3px solid var(--bouee); }
+body.avec-selecteur { padding-bottom: calc(var(--barre-bas) + var(--zone-sure-bas) + 90px) !important; }
+
+/* ---------------------------------------------------------------- Alertes terrain (réserve, crue) */
+.alerte-terrain {
+    display: flex; gap: 12px; align-items: flex-start;
+    padding: 14px 16px; border-radius: var(--rayon);
+    font-weight: 700; line-height: 1.35;
+    border: 2px solid currentColor;
+}
+.alerte-terrain .material-symbols-rounded { font-size: 30px; flex-shrink: 0; }
+.alerte-terrain hr { margin: 8px 0; }
+.alerte-danger { color: #fff; background: var(--signal); border-color: var(--signal); }
+.alerte-warning { color: var(--ambre); background: var(--ambre-fond); }
+
+/* Bandeau d'alerte crue global (station surveillée) : compact, toujours visible en haut */
+.bandeau-crue {
+    position: sticky; top: 0; z-index: 1040;
+    display: flex; gap: 10px; align-items: center;
+    padding: calc(8px + env(safe-area-inset-top, 0px)) 12px 8px;
+    color: #fff; background: var(--signal);
+}
+.bandeau-crue.niveau-1 { background: #8a5300; }
+.bandeau-crue .material-symbols-rounded { font-size: 28px; flex-shrink: 0; }
+.bandeau-crue .bandeau-texte { color: #fff; text-decoration: none; min-width: 0; line-height: 1.25; }
+.bandeau-crue .bandeau-texte strong { display: block; font-size: .95rem; }
+.bandeau-crue .bandeau-texte small {
+    display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden;
+    font-size: .8rem; opacity: .95;
+}
+.bandeau-crue button { margin-left: auto; flex-shrink: 0; color: #fff; border: 2px solid #fff; background: transparent; border-radius: 999px; min-height: 40px; padding: 0 12px; font-weight: 700; }
+
+/* ---------------------------------------------------------------- Garde-fou réglementaire */
+.contexte-regles {
+    display: flex; gap: 10px; align-items: flex-start;
+    padding: 12px 14px; border-radius: var(--rayon);
+    background: var(--ardoise-clair); color: var(--encre); font-size: .95rem;
+}
+.contexte-regles .material-symbols-rounded { color: var(--ardoise); }
+.regle-alertes:empty { display: none; }
+.regle-alerte {
+    display: flex; gap: 10px; align-items: flex-start;
+    padding: 10px 12px; margin-bottom: 8px; border-radius: var(--rayon-petit);
+    font-size: .95rem; line-height: 1.35; font-weight: 700;
+}
+.regle-alerte .material-symbols-rounded { font-size: 22px; flex-shrink: 0; }
+.regle-danger { background: var(--signal); color: #fff; }
+.regle-warning { background: var(--ambre-fond); color: var(--ambre); border: 1.5px solid #e7b766; }
+.regle-info { background: var(--ardoise-clair); color: var(--encre); font-weight: 400; }
+.regle-actions { display: flex; flex-direction: column; gap: 10px; padding: 4px 0 6px; }
+.regle-actions .btn-relacher { align-self: flex-start; min-height: 48px; padding: 0 18px; font-size: 1rem; }
+.regle-confirme { display: flex; gap: 10px; align-items: flex-start; font-size: .9rem; color: var(--texte-doux); }
+.regle-confirme input { flex-shrink: 0; margin-top: 2px; }
+.regle-mention { font-size: .78rem; color: var(--texte-doux); margin: 0; }
+.catch-card-alerte { border: 2px solid var(--signal) !important; }
+
+/* ---------------------------------------------------------------- Conditions gagnantes */
+.jauge-score {
+    --score: 0;
+    width: 132px; height: 132px; border-radius: 50%;
+    display: grid; place-items: center;
+    background: conic-gradient(var(--bouee) calc(var(--score) * 1%), var(--ardoise-clair) 0);
+}
+.jauge-score > div {
+    width: 104px; height: 104px; border-radius: 50%; background: var(--papier);
+    display: flex; flex-direction: column; align-items: center; justify-content: center;
+}
+.jauge-score strong { font-size: 2.2rem; line-height: 1; }
+.jauge-score span { font-size: .8rem; color: var(--texte-doux); }
+.creneau { border-left: 6px solid var(--bouee) !important; }
+.liste-raisons { list-style: none; padding: 0; margin: 0; }
+.liste-raisons li { display: flex; gap: 8px; padding: 6px 0; border-top: 1px solid var(--trait); }
+.liste-raisons li:first-child { border-top: 0; }
+.barre-stat { height: 12px; border-radius: 6px; background: var(--ardoise-clair); overflow: hidden; }
+.barre-stat > span { display: block; height: 100%; background: var(--ardoise); }
+.barre-stat.principale > span { background: var(--bouee); }
+
+/* ---------------------------------------------------------------- Porte-carte */
+.carte-peche-vue {
+    background: #fff; border-radius: var(--rayon); padding: 8px;
+    border: 2px solid var(--encre);
+}
+.carte-peche-vue img { width: 100%; height: auto; display: block; border-radius: 8px; }
+.qr-geant { background: #fff; padding: 18px; border-radius: var(--rayon); display: flex; justify-content: center; }
+.qr-geant svg { width: min(78vw, 340px); height: auto; }
+.carte-etat { display: inline-flex; gap: 6px; align-items: center; font-weight: 700; }
+
+/* Bouton d'accès rapide à la carte sur l'accueil */
+.acces-carte {
+    display: flex; align-items: center; gap: 14px;
+    padding: 14px 16px; border-radius: var(--rayon);
+    background: var(--encre); color: #fff !important; text-decoration: none;
+}
+.acces-carte .material-symbols-rounded { font-size: 34px; color: #ffd8bf; }
+
+/* ---------------------------------------------------------------- Divers */
+.hors-ligne-bande {
+    position: sticky; top: 0; z-index: 1045;
+    display: flex; align-items: center; justify-content: center; gap: 8px;
+    padding: calc(6px + env(safe-area-inset-top, 0px)) 12px 6px;
+    background: var(--bouee); color: #fff; font-weight: 700; font-size: .88rem;
+}
+.hors-ligne-bande .material-symbols-rounded { font-size: 20px; }
+.lien-discret { color: var(--texte-doux); }
+img[loading="lazy"] { background: #e9efef; }
+
+/* Pages de saisie (sans barre du bas) : le bouton d'enregistrement reste sous le pouce */
+body:not(:has(.barre-pouce)) { padding-bottom: 24px !important; }
+.action-collante {
+    position: sticky; bottom: 0; z-index: 1010;
+    margin: 0 -12px; padding: 14px 12px calc(14px + var(--zone-sure-bas));
+    background: linear-gradient(to top, var(--eau-claire) 72%, rgba(238, 243, 242, 0));
+}
+html[data-theme="soleil"] .action-collante { background: #fff; border-top: 2px solid #000; }
+
+/* Profil : bannière par défaut (sans photo) aux couleurs du thème */
+body .profile-banner-responsive:not([style]) { background: var(--encre); }

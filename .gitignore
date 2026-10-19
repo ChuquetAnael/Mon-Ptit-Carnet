@@ -433,3 +433,5 @@ uploads/*
 !uploads/.htaccess
 BDD/env.local.php
 cle/
+stockage_prive/*
+!stockage_prive/.htaccess

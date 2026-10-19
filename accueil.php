@@ -38,10 +38,7 @@ if (empty($_SESSION['dernier_nettoyage']) || $_SESSION['dernier_nettoyage'] < ti
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Tableau de bord - Mon Carnet de Pêche</title>
     
-    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/css/bootstrap.min.css" rel="stylesheet">
-    <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@400;500;600;700&display=swap" rel="stylesheet">
-    <link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Rounded:opsz,wght,FILL,GRAD@24,400,1,0" rel="stylesheet">
-    <link href="css/style.css" rel="stylesheet">
+    <?php include './includes/head.php'; ?>
     
     <style>
         /* Animation moderne au survol pour les nouvelles tuiles */
@@ -109,6 +106,18 @@ if (empty($_SESSION['dernier_nettoyage']) || $_SESSION['dernier_nettoyage'] < ti
                     </div>
                 </div>
             </div>
+        </a>
+
+        <!-- Accès en un geste : carte de pêche (contrôle) et conditions du moment -->
+        <a href="carte_peche.php" class="acces-carte mb-3">
+            <span class="material-symbols-rounded" aria-hidden="true">badge</span>
+            <span class="flex-grow-1"><strong class="d-block">Ma carte de pêche</strong><small>Prête pour un contrôle, même sans réseau</small></span>
+            <span class="material-symbols-rounded" aria-hidden="true" style="font-size:24px;color:#fff">chevron_right</span>
+        </a>
+        <a href="conditions.php" class="card border-0 shadow-sm text-decoration-none mb-4 p-3 d-flex flex-row align-items-center gap-3">
+            <span class="material-symbols-rounded text-primary" aria-hidden="true" style="font-size:34px">insights</span>
+            <span class="flex-grow-1 text-dark"><strong class="d-block">Conditions gagnantes</strong><small class="text-muted">Le meilleur créneau des 3 prochains jours, d'après tes sorties</small></span>
+            <span class="material-symbols-rounded text-muted" aria-hidden="true" style="font-size:24px">chevron_right</span>
         </a>
 
         <!-- Section Outils (Transformée en grille moderne 2x2) -->
@@ -198,7 +207,7 @@ if (empty($_SESSION['dernier_nettoyage']) || $_SESSION['dernier_nettoyage'] < ti
                         <div class="ms-3 flex-grow-1">
                             <h6 class="fw-bold text-dark mb-1 d-flex align-items-center">
                                 <?php if(!empty($prise['ICONE_CHEMIN'])): ?>
-                                    <img src="<?= e($prise['ICONE_CHEMIN']) ?>" style="width: 20px; height: 20px; object-fit: contain;" class="me-2">
+                                    <img loading="lazy" src="<?= e(icone_legere($prise['ICONE_CHEMIN'])) ?>" style="width: 20px; height: 20px; object-fit: contain;" class="me-2">
                                 <?php endif; ?>
                                 <?= e($prise['NOM_COM']) ?>
                             </h6>
@@ -216,21 +225,7 @@ if (empty($_SESSION['dernier_nettoyage']) || $_SESSION['dernier_nettoyage'] < ti
 
     </main>
 
-    <nav class="navbar fixed-bottom bg-white custom-navbar border-0 shadow-lg">
-        <div class="container-fluid d-flex justify-content-around align-items-end px-2">
-            <a href="accueil.php" class="nav-item active d-flex flex-column align-items-center text-primary text-decoration-none">
-                <span class="material-symbols-rounded">home</span>
-                <span class="menu-text" style="font-size: 0.75rem;">Accueil</span>
-            </a>
-            <a href="nouvelle_session.php" class="btn-add-catch">
-                <span class="material-symbols-rounded text-white" style="font-size: 36px;">phishing</span>
-            </a>
-            <a href="profil.php" class="nav-item d-flex flex-column align-items-center text-secondary text-decoration-none">
-                <span class="material-symbols-rounded">person</span>
-                <span class="menu-text" style="font-size: 0.75rem;">Profil</span>
-            </a>
-        </div>
-    </nav>
+    <?php include './includes/navbar.php'; ?>
 
     <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/js/bootstrap.bundle.min.js"></script>
 

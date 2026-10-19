@@ -15,6 +15,13 @@ if (utilisateur_id()) {
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Mon P'tit Carnet - L'appli des pêcheurs</title>
     
+    <link rel="manifest" href="manifest.webmanifest">
+    <meta name="theme-color" content="#0e2a33">
+    <link rel="icon" type="image/png" sizes="32x32" href="asset/icones/icone-32.png">
+    <link rel="apple-touch-icon" href="asset/icones/icone-180.png">
+    <!-- Efface la carte de pêche gardée hors-ligne après une déconnexion -->
+    <script src="script/app.js?v=3" defer></script>
+
     <!-- Bootstrap 5 CSS -->
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/css/bootstrap.min.css" rel="stylesheet">
     

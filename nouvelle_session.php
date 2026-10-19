@@ -1,5 +1,7 @@
 <?php
 require_once './includes/auth_bdd.php';
+require_once './includes/reglementation.php';
+require_once './includes/hydro.php';
 
 $pdo = db();
 $id_user = (int) $_SESSION['user_id'];
@@ -16,21 +18,28 @@ function enregistrerSpotEtSession(PDO $pdo, int $id_user, array $s2): int
 {
     $id_spot = $s2['id_spot'];
     if ($s2['nouveau_spot']) {
-        $stmtSpot = $pdo->prepare("INSERT INTO spot (ID_UTILISATEUR, ID_TYPE_SPOT, NOM_SPOT, LOCALISATION) VALUES (?, ?, ?, ?)");
-        $stmtSpot->execute([$id_user, $s2['nouveau_spot']['type'], $s2['nouveau_spot']['nom'], $s2['localisation']]);
+        $stmtSpot = $pdo->prepare("INSERT INTO spot (ID_UTILISATEUR, ID_TYPE_SPOT, NOM_SPOT, LOCALISATION, CATEGORIE_PISCICOLE, CODE_DEPARTEMENT) VALUES (?, ?, ?, ?, ?, ?)");
+        $stmtSpot->execute([$id_user, $s2['nouveau_spot']['type'], $s2['nouveau_spot']['nom'], $s2['localisation'], $s2['categorie'], $s2['departement']]);
         $id_spot = (int) $pdo->lastInsertId();
+    } elseif ($id_spot && $s2['categorie'] !== null) {
+        // Catégorie piscicole précisée pour un spot existant : on la mémorise (spot de l'utilisateur uniquement)
+        $pdo->prepare("UPDATE spot SET CATEGORIE_PISCICOLE = ? WHERE ID_SPOT = ? AND ID_UTILISATEUR = ?")->execute([$s2['categorie'], $id_spot, $id_user]);
     }
 
     $stmtSess = $pdo->prepare("
         INSERT INTO session_p (
             ID_UTILISATEUR, ID_TYPE_SESSION, ID_SPOT, DATE_DEBUT, DATE_FIN,
-            TEMPERATURE, PRESSION_HPA, VITESSE_VENT, DIREC_VENT, DESCRIP_CIEL, COEFF_MAREE, DESC_MAREE
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            TEMPERATURE, PRESSION_HPA, VITESSE_VENT, DIREC_VENT, DESCRIP_CIEL, COEFF_MAREE, DESC_MAREE,
+            TENDANCE_PRESSION_3H, TENDANCE_PRESSION_24H, DEBIT_M3S, DEBIT_RATIO, CODE_STATION_HYDRO, COURS_EAU,
+            MILIEU, FACADE, CODE_DEPARTEMENT
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     ");
     $stmtSess->execute([
         $id_user, $s2['id_type_session'], $id_spot, $s2['date_debut'], $s2['date_fin'],
         $s2['temp'], $s2['press'], $s2['wind'], $s2['direc_vent'], $s2['ciel'],
-        $s2['coeff_maree'], $s2['desc_maree']
+        $s2['coeff_maree'], $s2['desc_maree'],
+        $s2['tendance_3h'], $s2['tendance_24h'], $s2['debit'], $s2['debit_ratio'], $s2['code_station'], $s2['cours_eau'],
+        $s2['milieu'], $s2['facade'], $s2['departement'],
     ]);
     return (int) $pdo->lastInsertId();
 }
@@ -127,9 +136,9 @@ if ($etape === 2 && $_SERVER["REQUEST_METHOD"] == "POST") {
             $nouveau_spot = ['nom' => $nom_spot, 'type' => $type_spot];
         }
     } elseif ($id = id_ou_null($_POST['id_spot'] ?? null)) {
-        $stmt = $pdo->prepare("SELECT 1 FROM spot WHERE ID_SPOT = ? AND ID_UTILISATEUR = ?");
+        $stmt = $pdo->prepare("SELECT ID_TYPE_SPOT, CATEGORIE_PISCICOLE, LOCALISATION, CODE_DEPARTEMENT FROM spot WHERE ID_SPOT = ? AND ID_UTILISATEUR = ?");
         $stmt->execute([$id, $id_user]);
-        if ($stmt->fetchColumn()) $id_spot = $id;
+        if ($spot_existant = $stmt->fetch(PDO::FETCH_ASSOC)) $id_spot = $id;
     }
 
     if ($erreurs) {
@@ -140,6 +149,20 @@ if ($etape === 2 && $_SERVER["REQUEST_METHOD"] == "POST") {
 
     $localisation = localisation_ou_null($_POST['latitude'] ?? null, $_POST['longitude'] ?? null);
     $coords = lire_localisation($localisation);
+
+    // Milieu, catégorie, département : servent au garde-fou réglementaire et aux statistiques communautaires
+    $id_type_spot = $nouveau_spot['type'] ?? (isset($spot_existant) && $id_spot ? (int) $spot_existant['ID_TYPE_SPOT'] : null);
+    $milieu = milieu_type_spot($id_type_spot) ?? (isset($_POST['peche_mer']) ? 'mer' : milieu_type_session($id_type_session));
+    $categorie = in_array($_POST['categorie_piscicole'] ?? '', ['1', '2'], true) ? (int) $_POST['categorie_piscicole'] : null;
+    if ($milieu === 'mer') $categorie = null;
+    $categorie_effective = $categorie ?? (isset($spot_existant) && $id_spot && $spot_existant['CATEGORIE_PISCICOLE'] !== null ? (int) $spot_existant['CATEGORIE_PISCICOLE'] : null);
+    if (!$coords && isset($spot_existant) && $id_spot) $coords = lire_localisation($spot_existant['LOCALISATION']);
+    $departement = $coords ? departement_coords($coords[0], $coords[1]) : null;
+    $tend3 = nombre_ou_null($_POST['meteo_tend3h'] ?? null, -30, 30);
+    $tend24 = nombre_ou_null($_POST['meteo_tend24h'] ?? null, -60, 60);
+    $debit = nombre_ou_null($_POST['debit_m3s'] ?? null, 0, 100000);
+    $debit_ratio = nombre_ou_null($_POST['debit_ratio'] ?? null, 0, 100);
+    $code_station = $milieu === 'mer' ? null : code_station_valide($_POST['code_station'] ?? null); // le débit d'une rivière voisine n'a pas de sens en mer
     $temp = nombre_ou_null($_POST['meteo_temp'] ?? null, -60, 60);
     $press = nombre_ou_null($_POST['meteo_press'] ?? null, 800, 1100);
     $wind = nombre_ou_null($_POST['meteo_wind'] ?? null, 0, 400);
@@ -162,6 +185,20 @@ if ($etape === 2 && $_SERVER["REQUEST_METHOD"] == "POST") {
         'ciel' => in_array($_POST['meteo_ciel'] ?? '', CIELS_AUTORISES, true) ? $_POST['meteo_ciel'] : null,
         'coeff_maree' => ($coeff !== null && $coeff >= 20 && $coeff <= 120) ? $coeff : null,
         'desc_maree' => in_array($_POST['desc_maree'] ?? '', ETATS_MAREE, true) ? $_POST['desc_maree'] : null,
+        // Conditions complètes (analyse « conditions gagnantes »)
+        'tendance_3h' => $tend3 === null ? null : round($tend3, 1),
+        'tendance_24h' => $tend24 === null ? null : round($tend24, 1),
+        'debit' => $code_station ? $debit : null,
+        'debit_ratio' => $code_station ? $debit_ratio : null,
+        'code_station' => $code_station,
+        'cours_eau' => $code_station ? (mb_substr(trim((string) ($_POST['cours_eau'] ?? '')), 0, 100) ?: null) : null,
+        // Lieu (jamais de coordonnées dans la session : département et façade seulement)
+        'milieu' => $milieu,
+        'facade' => in_array($milieu, ['mer', 'estuaire'], true) && $coords ? facade_maritime($coords[0], $coords[1]) : null,
+        'departement' => $departement,
+        'categorie' => $categorie,
+        'categorie_effective' => $categorie_effective,
+        'id_type_spot' => $id_type_spot,
     ];
 
     // SI CAPOT : on enregistre directement la session et on saute l'étape 3
@@ -191,6 +228,27 @@ if ($etape === 3 && $_SERVER["REQUEST_METHOD"] == "POST") {
     $s2 = $_SESSION['nouvelle_session']['step2'];
     $date_base = substr($s2['date_debut'], 0, 10);
     $heure_debut = substr($s2['date_debut'], 11, 5);
+
+    // Garde-fou réglementaire : un poisson gardé hors règles doit avoir été confirmé par le pêcheur
+    $ctx = contexte_reglementaire($pdo, [
+        'id_type_spot' => $s2['id_type_spot'] ?? null, 'categorie' => $s2['categorie_effective'] ?? null,
+        'id_type_session' => $s2['id_type_session'], 'mer' => ($s2['milieu'] ?? null) === 'mer',
+        'lat' => $s2['lat_final'], 'lng' => $s2['lng_final'], 'date' => $date_base, 'departement' => $s2['departement'] ?? null,
+    ]);
+    $prises_a_controler = [];
+    foreach ((array) ($_POST['prises'] ?? []) as $p) {
+        if (!$id_esp = id_ou_null($p['id_espece'] ?? null)) continue;
+        $prises_a_controler[] = [
+            'espece' => $id_esp, 'taille' => nombre_ou_null($p['taille'] ?? null, 0, 1000),
+            'quantite' => id_ou_null($p['quantite'] ?? null) ?? 1, 'relache' => isset($p['relache']), 'confirme' => !empty($p['confirme_regles']),
+        ];
+    }
+    $non_conformes = prises_non_conformes(regles_resolues($pdo, $ctx), $ctx, $prises_a_controler, gardes_du_jour($pdo, $id_user, $date_base));
+    if ($non_conformes) {
+        $_SESSION['nouvelle_session']['erreurs'] = ["Une ou plusieurs prises gardées ne respectent pas la réglementation affichée. Relâche-les ou confirme chaque alerte avant d'enregistrer."];
+        header('Location: nouvelle_session.php?etape=3');
+        exit();
+    }
 
     // Photos autorisées = uniquement celles envoyées à l'étape 1 de CETTE saisie
     $photos_session = [];
@@ -319,9 +377,14 @@ $erreurs_etape = $session_data['erreurs'] ?? [];
 unset($_SESSION['nouvelle_session']['erreurs']);
 
 if ($etape === 2) {
-    $spots = $pdo->prepare("SELECT ID_SPOT, NOM_SPOT FROM spot WHERE ID_UTILISATEUR = ? ORDER BY NOM_SPOT");
+    $spots = $pdo->prepare("SELECT ID_SPOT, NOM_SPOT, ID_TYPE_SPOT, CATEGORIE_PISCICOLE FROM spot WHERE ID_UTILISATEUR = ? ORDER BY NOM_SPOT");
     $spots->execute([$id_user]);
     $spots = $spots->fetchAll(PDO::FETCH_ASSOC);
+    $infos_spots = [];
+    foreach ($spots as $sp) {
+        $infos_spots[(int) $sp['ID_SPOT']] = ['type' => (int) $sp['ID_TYPE_SPOT'], 'categorie' => $sp['CATEGORIE_PISCICOLE'] !== null ? (int) $sp['CATEGORIE_PISCICOLE'] : null];
+    }
+    $reserves_carte = reserves_pour_carte($pdo);
     $types_spot = $pdo->query("SELECT ID_TYPE_SPOT, NOM_TYPE_SPOT FROM type_spot ORDER BY NOM_TYPE_SPOT")->fetchAll(PDO::FETCH_ASSOC);
     $types_session = $pdo->query("SELECT ID_TYPE_SESSION, NOM_TYPE_SESSION FROM type_session ORDER BY NOM_TYPE_SESSION")->fetchAll(PDO::FETCH_ASSOC);
 }
@@ -341,6 +404,18 @@ if ($etape === 3) {
     $appats = $appats->fetchAll(PDO::FETCH_ASSOC);
 
     $photos = array_map(fn($ph) => ['chemin' => $ph['chemin'], 'heure' => $ph['heure']], $session_data['photos'] ?? []);
+    foreach ($especes as &$esp) $esp['ICONE_CHEMIN'] = icone_legere($esp['ICONE_CHEMIN']);
+    unset($esp);
+
+    // Garde-fou réglementaire : règles du lieu et du jour de la session, quotas déjà utilisés aujourd'hui
+    $s2 = $session_data['step2'] ?? [];
+    $date_session = substr($s2['date_debut'] ?? date('Y-m-d'), 0, 10);
+    $ctx_regles = contexte_reglementaire($pdo, [
+        'id_type_spot' => $s2['id_type_spot'] ?? null, 'categorie' => $s2['categorie_effective'] ?? null,
+        'id_type_session' => $s2['id_type_session'] ?? null, 'mer' => ($s2['milieu'] ?? null) === 'mer',
+        'lat' => $s2['lat_final'] ?? null, 'lng' => $s2['lng_final'] ?? null, 'date' => $date_session, 'departement' => $s2['departement'] ?? null,
+    ]);
+    $garde_fou = donnees_garde_fou($ctx_regles, regles_resolues($pdo, $ctx_regles), gardes_du_jour($pdo, $id_user, $date_session));
 }
 ?>
 
@@ -408,7 +483,9 @@ if ($etape === 3) {
             <?php foreach ($erreurs_etape as $err): ?>
                 <div class="alert alert-danger rounded-4 border-0 shadow-sm small"><?= e($err) ?></div>
             <?php endforeach; ?>
-            <div id="map" class="shadow-sm rounded-4 mb-3" style="height: 200px; z-index: 1;"></div>
+            <div id="map" class="shadow-sm rounded-4 mb-3" style="height: 220px; z-index: 1;"></div>
+            <div id="alerte-reserve" class="alerte-terrain alerte-danger mb-3" role="alert" hidden></div>
+            <div id="alerte-crue" class="alerte-terrain mb-3" role="alert" hidden></div>
             
             <input type="hidden" name="latitude" id="input_lat" value="<?= e($session_data['lat'] ?? '') ?>">
             <input type="hidden" name="longitude" id="input_lng" value="<?= e($session_data['lng'] ?? '') ?>">
@@ -418,6 +495,12 @@ if ($etape === 3) {
             <input type="hidden" name="meteo_wind" id="input_wind">
             <input type="hidden" name="meteo_direc" id="input_direc">
             <input type="hidden" name="meteo_ciel" id="input_ciel">
+            <input type="hidden" name="meteo_tend3h" id="input_tend3h">
+            <input type="hidden" name="meteo_tend24h" id="input_tend24h">
+            <input type="hidden" name="debit_m3s" id="input_debit">
+            <input type="hidden" name="debit_ratio" id="input_debit_ratio">
+            <input type="hidden" name="code_station" id="input_station">
+            <input type="hidden" name="cours_eau" id="input_cours_eau">
             
             <div id="weather-card" class="card border-0 shadow-sm rounded-4 p-3 mb-4 bg-primary text-white" style="background: linear-gradient(135deg, #1e3c72 0%, #2a5298 100%); display: none;">
                 <div class="d-flex flex-wrap gap-2 justify-content-center">
@@ -425,6 +508,8 @@ if ($etape === 3) {
                     <span class="badge bg-white text-primary rounded-pill"><span class="material-symbols-rounded align-middle fs-6 me-1">thermostat</span><span id="ui_temp">--</span>°C</span>
                     <span class="badge bg-white text-primary rounded-pill"><span class="material-symbols-rounded align-middle fs-6 me-1">compress</span><span id="ui_press">--</span> hPa</span>
                     <span class="badge bg-white text-primary rounded-pill"><span class="material-symbols-rounded align-middle fs-6 me-1">air</span><span id="ui_wind">--</span> km/h <span id="ui_direc" class="ms-1 fw-normal text-muted"></span></span>
+                    <span class="badge bg-white text-primary rounded-pill" id="ui_tendance_badge" hidden><span class="material-symbols-rounded align-middle fs-6 me-1" id="ui_tendance_icone">trending_flat</span><span id="ui_tendance">--</span></span>
+                    <span class="badge bg-white text-primary rounded-pill" id="ui_debit_badge" hidden><span class="material-symbols-rounded align-middle fs-6 me-1">water</span><span id="ui_debit">--</span></span>
                 </div>
             </div>
 
@@ -441,7 +526,7 @@ if ($etape === 3) {
                 </div>
 
                 <div class="form-check form-switch mb-3 bg-light p-3 rounded-4 d-flex align-items-center">
-                    <input class="form-check-input ms-0 me-3" type="checkbox" id="toggle-maree" style="transform: scale(1.3);" onchange="document.getElementById('maree-panel').style.display = this.checked ? 'flex' : 'none';">
+                    <input class="form-check-input ms-0 me-3" type="checkbox" id="toggle-maree" name="peche_mer" value="1" style="transform: scale(1.3);" onchange="document.getElementById('maree-panel').style.display = this.checked ? 'flex' : 'none';">
                     <label class="form-check-label fw-bold text-primary mb-0" for="toggle-maree">🌊 Pêche en Mer (Activer la marée)</label>
                 </div>
 
@@ -485,12 +570,22 @@ if ($etape === 3) {
                     <div id="new-spot-panel" class="bg-white border rounded-4 p-3 mt-2 shadow-sm" style="display: none;">
                         <input type="hidden" name="is_new_spot" id="is_new_spot" value="0">
                         <input type="text" class="form-control bg-light border-0 mb-2" name="nouveau_nom_spot" maxlength="50" placeholder="Nom du spot">
-                        <select class="form-select bg-light border-0" name="nouveau_type_spot">
+                        <select class="form-select bg-light border-0" name="nouveau_type_spot" id="nouveau-type-spot">
                             <option value="" selected disabled>Type de milieu...</option>
                             <?php foreach($types_spot as $ts): ?>
                                 <option value="<?= (int) $ts['ID_TYPE_SPOT'] ?>"><?= e($ts['NOM_TYPE_SPOT']) ?></option>
                             <?php endforeach; ?>
                         </select>
+                    </div>
+
+                    <div id="categorie-panel" class="mt-3" hidden>
+                        <label class="form-label text-secondary small fw-medium" for="categorie-piscicole">Catégorie piscicole <span class="text-muted fw-normal">(pour les alertes de réglementation)</span></label>
+                        <select class="form-select bg-light border-0" name="categorie_piscicole" id="categorie-piscicole">
+                            <option value="">Je ne sais pas</option>
+                            <option value="1">1re catégorie (eaux à truites)</option>
+                            <option value="2">2e catégorie (autres eaux)</option>
+                        </select>
+                        <small class="text-muted d-block mt-1">Elle figure sur l'arrêté préfectoral ou le site de ta fédération de pêche.</small>
                     </div>
                 </div>
 
@@ -499,7 +594,7 @@ if ($etape === 3) {
                     <label class="form-check-label fw-bold text-dark mb-0" for="is_capot">Session Bredouille (Capot)</label>
                 </div>
 
-                <div class="d-grid mt-4">
+                <div class="d-grid mt-4 action-collante">
                     <button type="submit" id="btn-submit-step2" class="btn btn-primary btn-lg rounded-pill fw-semibold shadow-sm custom-btn-submit">
                         Continuer <span class="material-symbols-rounded align-middle ms-2">arrow_forward</span>
                     </button>
@@ -509,6 +604,18 @@ if ($etape === 3) {
 
         <?php elseif ($etape === 3): ?>
         <h5 class="fw-bold mb-3 text-dark text-center">Détail des prises</h5>
+        <?php foreach ($erreurs_etape as $err): ?>
+            <div class="alert alert-danger rounded-4 border-0 shadow-sm small"><?= e($err) ?></div>
+        <?php endforeach; ?>
+        <div class="contexte-regles mb-3">
+            <span class="material-symbols-rounded" aria-hidden="true">gavel</span>
+            <div>
+                <strong>Réglementation vérifiée pour :</strong> <?= e($ctx_regles['libelle']) ?>, le <?= e(date('d/m/Y', strtotime($date_session))) ?>
+                <?php if (empty($ctx_regles['categorie']) && in_array('eau_douce', $ctx_regles['milieux'], true) && ($ctx_regles['milieu'] ?? null) !== 'mer'): ?>
+                    <small class="d-block">Indique la catégorie de ton spot (étape précédente ou Mes spots) pour des alertes précises.</small>
+                <?php endif; ?>
+            </div>
+        </div>
         
         <form id="form-etape-3" action="nouvelle_session.php?etape=3" method="POST">
             <?= csrf_field() ?>
@@ -521,7 +628,7 @@ if ($etape === 3) {
 
             <div id="new-items-container"></div>
 
-            <div class="d-grid mt-5 border-top pt-4">
+            <div class="d-grid mt-4 action-collante">
                 <button type="submit" id="submit-final" class="btn btn-success btn-lg rounded-pill fw-semibold shadow-lg py-3">
                     Terminer et Sauvegarder <span class="material-symbols-rounded align-middle ms-2">check_circle</span>
                 </button>

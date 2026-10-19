@@ -157,6 +157,18 @@ function formaterDate($date_str) {
                 <span class="material-symbols-rounded text-muted">chevron_right</span>
             <?php endif; ?>
         </a>
+        <a href="admin_reglementation.php" class="card border-0 shadow-sm rounded-4 bg-white admin-nav-card p-3 mb-3 d-flex flex-row align-items-center justify-content-between text-decoration-none">
+            <div class="d-flex align-items-center">
+                <div class="bg-success bg-opacity-10 text-success rounded-circle d-flex align-items-center justify-content-center me-3" style="width: 50px; height: 50px;">
+                    <span class="material-symbols-rounded fs-3">gavel</span>
+                </div>
+                <div>
+                    <span class="fw-bold text-dark d-block">Réglementation et réserves</span>
+                    <small class="text-muted">Tailles, quotas, périodes, zones interdites</small>
+                </div>
+            </div>
+            <span class="material-symbols-rounded text-muted">chevron_right</span>
+        </a>
         <div class="row g-3 mb-4">
             <div class="col-6">
                 <a href="admin_compte.php" class="card border-0 shadow-sm rounded-4 bg-white admin-nav-card p-3 d-flex flex-column align-items-center justify-content-center h-100">

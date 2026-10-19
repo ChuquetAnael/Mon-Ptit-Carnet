@@ -1,0 +1,22 @@
+{
+  "name": "Mon P'tit Carnet de pêche",
+  "short_name": "P'tit Carnet",
+  "description": "Carnet de pêche : prises, conditions, réglementation et carte de pêche hors-ligne.",
+  "lang": "fr",
+  "start_url": "accueil.php?source=pwa",
+  "scope": "./",
+  "display": "standalone",
+  "orientation": "portrait",
+  "background_color": "#eef3f2",
+  "theme_color": "#0e2a33",
+  "icons": [
+    { "src": "asset/icones/icone-192.png", "sizes": "192x192", "type": "image/png" },
+    { "src": "asset/icones/icone-512.png", "sizes": "512x512", "type": "image/png" },
+    { "src": "asset/icones/icone-masquable-512.png", "sizes": "512x512", "type": "image/png", "purpose": "maskable" }
+  ],
+  "shortcuts": [
+    { "name": "Nouvelle prise", "url": "nouvelle_session.php", "icons": [{ "src": "asset/icones/icone-192.png", "sizes": "192x192" }] },
+    { "name": "Ma carte de pêche", "url": "carte_peche.php", "icons": [{ "src": "asset/icones/icone-192.png", "sizes": "192x192" }] },
+    { "name": "Conditions du jour", "url": "conditions.php", "icons": [{ "src": "asset/icones/icone-192.png", "sizes": "192x192" }] }
+  ]
+}

@@ -36,14 +36,14 @@ foreach ($stmtSpots->fetchAll(PDO::FETCH_ASSOC) as $s) {
     <link rel="stylesheet" href="css/meteo.css">
 
 </head>
-<body class="bg-light pb-5 mb-5">
+<body class="bg-light avec-selecteur">
 
     <header class="top-bar-meteo text-white text-center py-4 shadow-sm mb-4">
         <a href="accueil.php" class="btn-back">
             <span class="material-symbols-rounded fs-2">arrow_back_ios_new</span>
         </a>
         <h1 class="h4 mb-0 fw-semibold d-flex align-items-center justify-content-center">
-            <span class="material-symbols-rounded me-2">partly_cloudy_day</span> Conditions de peche
+            <span class="material-symbols-rounded me-2">partly_cloudy_day</span> Météo, marées, rivière
         </h1>
     </header>
 
@@ -111,18 +111,6 @@ foreach ($stmtSpots->fetchAll(PDO::FETCH_ASSOC) as $s) {
                 </div>
             </div>
 
-            <!-- TOGGLE SWITCH (Météo 7J vs Marée) -->
-            <div class="bg-white rounded-pill shadow-sm border p-1 mb-4 d-flex mx-auto segmented-control" style="max-width: 350px;">
-                <input type="radio" class="btn-check" name="viewToggle" id="btn-meteo" value="meteo" autocomplete="off" checked>
-                <label class="btn rounded-pill flex-fill fw-bold border-0 text-muted" for="btn-meteo">Météo</label>
-
-                <input type="radio" class="btn-check" name="viewToggle" id="btn-maree" value="maree" autocomplete="off">
-                <label class="btn rounded-pill flex-fill fw-bold border-0 text-muted" for="btn-maree">Marée</label>
-
-                <input type="radio" class="btn-check" name="viewToggle" id="btn-riviere" value="riviere" autocomplete="off">
-                <label class="btn rounded-pill flex-fill fw-bold border-0 text-muted" for="btn-riviere">Rivière(Beta)</label>
-            </div>
-
             <!-- SECTION 1 : PRÉVISIONS 7 JOURS -->
             <div id="section-meteo">
                 <h6 class="fw-bold text-secondary text-uppercase mb-3 mt-2 d-flex align-items-center">
@@ -152,10 +140,20 @@ foreach ($stmtSpots->fetchAll(PDO::FETCH_ASSOC) as $s) {
         <!-- Crédits APIs ultra discrets -->
         <div class="text-center mt-4">
             <small class="text-muted" style="font-size: 0.65rem;">
-                Météo par <a href="https://open-meteo.com/" target="_blank" class="text-decoration-none text-muted fw-bold">Open-Meteo</a> • Marées par <a href="https://api-maree.fr/" target="_blank" class="text-decoration-none text-muted fw-bold">api-maree.fr</a> (Ifremer/SHOM)
+                Météo par <a href="https://open-meteo.com/" target="_blank" class="text-decoration-none text-muted fw-bold">Open-Meteo</a> • Marées par <a href="https://api-maree.fr/" target="_blank" class="text-decoration-none text-muted fw-bold">api-maree.fr</a> (Ifremer/SHOM) • Rivières par <a href="https://hubeau.eaufrance.fr/" target="_blank" class="text-decoration-none text-muted fw-bold">Hub'eau</a> et <a href="https://www.vigicrues.gouv.fr/" target="_blank" class="text-decoration-none text-muted fw-bold">Vigicrues</a>
             </small>
         </div>
     </main>
+
+    <!-- Sélecteur de vue dans la zone du pouce -->
+    <div class="selecteur-vue" role="radiogroup" aria-label="Choisir la vue">
+        <input type="radio" name="viewToggle" id="btn-meteo" value="meteo" checked>
+        <label for="btn-meteo"><span class="material-symbols-rounded" aria-hidden="true">partly_cloudy_day</span>Météo</label>
+        <input type="radio" name="viewToggle" id="btn-maree" value="maree">
+        <label for="btn-maree"><span class="material-symbols-rounded" aria-hidden="true">waves</span>Marée</label>
+        <input type="radio" name="viewToggle" id="btn-riviere" value="riviere">
+        <label for="btn-riviere"><span class="material-symbols-rounded" aria-hidden="true">water</span>Rivière</label>
+    </div>
 
     <?php include './includes/navbar.php'; ?>
 

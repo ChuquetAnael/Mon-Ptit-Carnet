@@ -1,5 +1,6 @@
 <?php
 require_once './includes/bootstrap.php';
+require_once './includes/carte_peche.php';
 
 // 1. VÉRIFICATION DES DROITS D'ADMINISTRATION
 $id_admin = exiger_admin();
@@ -36,6 +37,7 @@ try {
             $pdo->prepare("DELETE FROM utilisateur WHERE ID_UTILISATEUR = ?")->execute([$id_cible]);
             $pdo->commit();
             supprimer_dossier_utilisateur($id_cible); // RGPD : les photos partent aussi
+            supprimer_dossier_prive($id_cible);       // et la carte de pêche
             $message_succes = "Le compte utilisateur #$id_cible et toutes ses données ont été supprimés définitivement.";
         }
     }

@@ -108,7 +108,7 @@ require_once './BDD/BDD_stat.php';
                     <li class="list-group-item p-3 d-flex align-items-center justify-content-between">
                         <div class="d-flex align-items-center">
                             <?php if(!empty($esp['ICONE_CHEMIN'])): ?>
-                                <img src="<?= e($esp['ICONE_CHEMIN']) ?>" style="width: 35px; height: 35px; object-fit: contain;" class="me-3">
+                                <img loading="lazy" src="<?= e(icone_legere($esp['ICONE_CHEMIN'])) ?>" style="width: 35px; height: 35px; object-fit: contain;" class="me-3">
                             <?php endif; ?>
                             <div>
                                 <h6 class="fw-bold mb-0 text-dark"><?= e($esp['NOM_COM']) ?></h6>

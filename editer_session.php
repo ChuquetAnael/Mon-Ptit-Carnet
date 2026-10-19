@@ -97,6 +97,17 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             $id_session, $id_user
         ]);
 
+        // Le spot a pu changer : milieu, façade et département suivent (analyse communautaire, réglementation)
+        if ($id_spot) {
+            $pdo->prepare("
+                UPDATE session_p s JOIN spot sp ON sp.ID_SPOT = s.ID_SPOT
+                SET s.MILIEU = CASE WHEN sp.ID_TYPE_SPOT <= 8 THEN 'eau_douce' WHEN sp.ID_TYPE_SPOT = 9 THEN 'estuaire' ELSE 'mer' END,
+                    s.CODE_DEPARTEMENT = COALESCE(sp.CODE_DEPARTEMENT, s.CODE_DEPARTEMENT),
+                    s.FACADE = CASE WHEN sp.ID_TYPE_SPOT <= 8 THEN NULL ELSE s.FACADE END
+                WHERE s.ID_SESSION = ? AND s.ID_UTILISATEUR = ?
+            ")->execute([$id_session, $id_user]);
+        }
+
         // Les prises gardent la même date que la session
         $stmtPrises = $pdo->prepare("UPDATE prise SET DATE_HEURE = CONCAT(DATE(?), ' ', TIME(DATE_HEURE)) WHERE ID_SESSION = ? AND DATE_HEURE IS NOT NULL");
         $stmtPrises->execute([$date_debut, $id_session]);

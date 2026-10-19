@@ -13,6 +13,13 @@ ini_set('display_errors', APP_DEBUG ? '1' : '0');
 ini_set('log_errors', '1');
 date_default_timezone_set('Europe/Paris');
 
+// Adresses des services externes (redéfinissables dans BDD/env.local.php, par ex. pour les tests)
+if (!defined('API_HUBEAU')) define('API_HUBEAU', 'https://hubeau.eaufrance.fr/api/v2/hydrometrie');
+if (!defined('API_VIGICRUES')) define('API_VIGICRUES', 'https://www.vigicrues.gouv.fr/services');
+if (!defined('API_GEO')) define('API_GEO', 'https://geo.api.gouv.fr');
+if (!defined('API_OPEN_METEO')) define('API_OPEN_METEO', 'https://api.open-meteo.com/v1');
+if (!defined('API_MAREE')) define('API_MAREE', 'https://api-maree.fr');
+
 const PHOTOS_MAX_PAR_PRISE = 6;
 const SESSIONS_EPINGLEES_MAX = 3;
 const SEUIL_SIGNALEMENTS_MASQUAGE = 1; // nb de signalements qui masquent une photo en attendant la modération
@@ -286,7 +293,7 @@ function http_get(string $url, int $timeout = 10): ?string
         CURLOPT_SSL_VERIFYHOST => 2,
         CURLOPT_CAINFO => __DIR__ . '/cacert.pem',
         CURLOPT_ENCODING => '',
-        CURLOPT_USERAGENT => 'MonPtitCarnet/0.2 (application de carnet de peche)',
+        CURLOPT_USERAGENT => 'MonPtitCarnet/0.3 (application de carnet de peche)',
         CURLOPT_HTTPHEADER => ['Accept: application/json'],
     ]);
     $body = curl_exec($ch);
@@ -299,4 +306,60 @@ function http_get(string $url, int $timeout = 10): ?string
         return null;
     }
     return $body;
+}
+
+/** GET HTTP décodé en JSON (tableau) ou null. */
+function http_json(string $url, int $timeout = 10): ?array
+{
+    $corps = http_get($url, $timeout);
+    if ($corps === null) return null;
+    $donnees = json_decode($corps, true);
+    return is_array($donnees) ? $donnees : null;
+}
+
+// -------------------------------------------------------------------------
+// CACHE DES APPELS EXTERNES (table cache_api)
+// -------------------------------------------------------------------------
+
+/** Valeur en cache (tableau) si elle n'a pas expiré, sinon null. */
+function cache_lire(string $cle): ?array
+{
+    try {
+        $stmt = db()->prepare("SELECT DONNEES FROM cache_api WHERE CLE = ? AND DATE_EXPIRATION > NOW()");
+        $stmt->execute([$cle]);
+        $json = $stmt->fetchColumn();
+    } catch (PDOException $e) {
+        return null; // table absente (migration V0.3 pas encore passée) : on fonctionne sans cache
+    }
+    if ($json === false) return null;
+    $donnees = json_decode($json, true);
+    return is_array($donnees) ? $donnees : null;
+}
+
+function cache_ecrire(string $cle, array $donnees, int $duree_secondes): void
+{
+    try {
+        db()->prepare("REPLACE INTO cache_api (CLE, DONNEES, DATE_EXPIRATION) VALUES (?, ?, NOW() + INTERVAL ? SECOND)")
+            ->execute([mb_substr($cle, 0, 190), json_encode($donnees), $duree_secondes]);
+        if (random_int(1, 100) === 1) {
+            db()->exec("DELETE FROM cache_api WHERE DATE_EXPIRATION < NOW()");
+        }
+    } catch (PDOException $e) {
+        error_log('[MonPtitCarnet] cache_api : ' . $e->getMessage());
+    }
+}
+
+/**
+ * Icône d'espèce allégée pour l'affichage (WebP ~20 Ko au lieu du PNG de 2 Mo).
+ * Les miniatures sont générées par BDD/miniatures.php ; à défaut, l'image d'origine est utilisée.
+ */
+function icone_legere(?string $chemin): ?string
+{
+    if (!$chemin) return $chemin;
+    static $cache = [];
+    if (!array_key_exists($chemin, $cache)) {
+        $mini = preg_replace('#^asset/(espece_png|type_session)/(.+)\.(png|jpe?g)$#i', 'asset/mini/$1/$2.webp', $chemin);
+        $cache[$chemin] = ($mini !== $chemin && is_file(__DIR__ . '/../' . $mini)) ? $mini : $chemin;
+    }
+    return $cache[$chemin];
 }

@@ -1,5 +1,6 @@
 <?php
 require_once './includes/auth_bdd.php';
+require_once './includes/reglementation.php';
 
 $pdo = db();
 $id_user = (int) $_SESSION['user_id'];
@@ -52,6 +53,15 @@ if ($action === 'edit' && ($id_prise = id_ou_null($_GET['id'] ?? null))) {
 
 $date_base = substr($prise_data['DATE_DEBUT'], 0, 10);
 
+// Garde-fou réglementaire (lieu et date de la session, quotas déjà utilisés ce jour-là)
+$ctx_regles = contexte_session_existante(
+    $pdo, $id_session,
+    isset($prise_data['LATITUDE']) && $prise_data['LATITUDE'] !== null ? (float) $prise_data['LATITUDE'] : null,
+    isset($prise_data['LONGITUDE']) && $prise_data['LONGITUDE'] !== null ? (float) $prise_data['LONGITUDE'] : null
+);
+$regles = regles_resolues($pdo, $ctx_regles);
+$gardes_jour = gardes_du_jour($pdo, $id_user, $date_base, $id_prise);
+
 // =========================================================================
 // 2. TRAITEMENT DU FORMULAIRE ENVOYÉ (POST)
 // =========================================================================
@@ -60,8 +70,23 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     $stmt = $pdo->prepare("SELECT 1 FROM espece WHERE ID_ESPECE = ?");
     $stmt->execute([$id_espece]);
 
+    $controle = [
+        'espece' => (int) $id_espece,
+        'taille' => nombre_ou_null($_POST['taille'] ?? null, 0, 1000),
+        'quantite' => id_ou_null($_POST['quantite'] ?? null) ?? 1,
+        'relache' => isset($_POST['relache']),
+        'confirme' => !empty($_POST['confirme_regles']),
+    ];
     if (!$id_espece || !$stmt->fetchColumn()) {
         $erreur = "L'espèce du poisson est obligatoire.";
+    } elseif (prises_non_conformes($regles, $ctx_regles, [$controle], $gardes_jour)) {
+        $erreur = "Ce poisson gardé ne respecte pas la réglementation affichée : relâche-le ou confirme l'alerte.";
+        // On réaffiche le formulaire avec la saisie en cours
+        $prise_data = array_merge($prise_data, [
+            'ID_ESPECE' => $id_espece, 'TAILLE_CM' => $_POST['taille'] ?? null, 'POIDS_KG' => $_POST['poids'] ?? null,
+            'QUANTITE' => $controle['quantite'], 'RELACHE' => $controle['relache'] ? 1 : 0,
+            'ID_TECHNIQUE' => id_ou_null($_POST['id_technique'] ?? null),
+        ]);
     } else {
         $taille = nombre_ou_null($_POST['taille'] ?? null, 0, 1000);
         $poids = nombre_ou_null($_POST['poids'] ?? null, 0, 999.99);
@@ -175,6 +200,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 // 3. CHARGEMENT DES LISTES ET PRÉPARATION DE L'AFFICHAGE
 // =========================================================================
 $especes = $pdo->query("SELECT ID_ESPECE, NOM_COM, ICONE_CHEMIN FROM espece ORDER BY NOM_COM")->fetchAll(PDO::FETCH_ASSOC);
+foreach ($especes as &$esp) $esp['ICONE_CHEMIN'] = icone_legere($esp['ICONE_CHEMIN']);
+unset($esp);
 $techniques = $pdo->query("SELECT ID_TECHNIQUE, NOM_TECHNIQUE FROM technique ORDER BY NOM_TECHNIQUE")->fetchAll(PDO::FETCH_ASSOC);
 
 // Récupération globale pour la boîte de pêche
@@ -379,9 +406,11 @@ $heure_affichee = !empty($prise_data['DATE_HEURE']) ? date('H:i', strtotime($pri
                     <input class="form-check-input ms-0 me-3" type="checkbox" name="relache" id="relache" style="transform: scale(1.3);" <?= ($prise_data['RELACHE'] ?? 1) == 1 ? 'checked' : '' ?>>
                     <label class="form-check-label fw-bold text-success mb-0" for="relache">Poisson relâché (No-Kill)</label>
                 </div>
+                <div id="regle-alertes" class="regle-alertes mt-3" aria-live="polite"></div>
+                <p class="small text-muted mt-2 mb-0"><span class="material-symbols-rounded align-middle me-1" style="font-size:16px">gavel</span>Réglementation vérifiée pour : <?= e($ctx_regles['libelle']) ?>, le <?= e(date('d/m/Y', strtotime($date_base))) ?></p>
             </div>
 
-            <div class="d-grid mt-4">
+            <div class="d-grid mt-4 action-collante">
                 <button type="submit" class="btn btn-primary btn-lg rounded-pill fw-semibold shadow py-3">
                     <span class="material-symbols-rounded align-middle me-2">save</span> <?= $action === 'add' ? 'Ajouter à la session' : 'Enregistrer les modifications' ?>
                 </button>
@@ -418,5 +447,37 @@ $heure_affichee = !empty($prise_data['DATE_HEURE']) ? date('H:i', strtotime($pri
 
     </script>
     <script src="script/gestion_prise.js"></script>
+    <script>const GARDE_FOU = <?= js(donnees_garde_fou($ctx_regles, $regles, $gardes_jour)) ?>;</script>
+    <script src="script/reglementation.js"></script>
+    <script>
+        // Garde-fou réglementaire : alerte immédiate à chaque modification de la prise
+        (function () {
+            const form = document.getElementById('main-form');
+            const zone = document.getElementById('regle-alertes');
+            const relache = document.getElementById('relache');
+            function verifier() {
+                const espece = parseInt(form.querySelector('.hidden-espece-input').value, 10);
+                if (!espece) { zone.innerHTML = ''; return []; }
+                const confirme = !!zone.querySelector('input[type="checkbox"]:checked') || <?= !empty($_POST['confirme_regles']) ? 'true' : 'false' ?>;
+                const alertes = Reglementation.controler(GARDE_FOU.regles, GARDE_FOU.contexte, {
+                    espece, taille: form.taille.value, quantite: form.quantite.value, relache: relache.checked,
+                }, Object.assign({}, GARDE_FOU.gardes));
+                Reglementation.afficher(zone, alertes, 'confirme_regles', confirme, () => { relache.checked = true; verifier(); });
+                return alertes;
+            }
+            form.addEventListener('input', verifier);
+            form.addEventListener('change', verifier);
+            form.querySelectorAll('.espece-option').forEach(o => o.addEventListener('click', () => setTimeout(verifier, 0)));
+            form.addEventListener('submit', e => {
+                const bloquantes = verifier().filter(a => a.bloquant);
+                if (bloquantes.length && !zone.querySelector('input[type="checkbox"]:checked')) {
+                    e.preventDefault();
+                    zone.scrollIntoView({ behavior: 'smooth', block: 'center' });
+                    if (navigator.vibrate) navigator.vibrate(200);
+                }
+            });
+            verifier();
+        })();
+    </script>
 </body>
 </html>

@@ -1,0 +1,27 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="theme-color" content="#0e2a33">
+    <title>Hors ligne - Mon P'tit Carnet</title>
+    <link href="css/app.css?v=3" rel="stylesheet">
+    <style>
+        body { margin: 0; padding: 0 !important; min-height: 100vh; display: flex; align-items: center; justify-content: center; font-family: 'Atkinson Hyperlegible', system-ui, sans-serif; background: #eef3f2; color: #0e2a33; }
+        main { max-width: 420px; padding: 24px; text-align: left; }
+        h1 { font-size: 1.6rem; margin: 0 0 12px; }
+        p { font-size: 1.05rem; line-height: 1.5; color: #3f525a; }
+        a.btn-carte { display: flex; align-items: center; justify-content: center; min-height: 56px; margin-top: 20px; border-radius: 16px; background: #0e2a33; color: #fff; font-weight: 700; font-size: 1.1rem; text-decoration: none; }
+        button { width: 100%; min-height: 52px; margin-top: 12px; border-radius: 16px; border: 2px solid #0e2a33; background: #fff; color: #0e2a33; font: inherit; font-weight: 700; }
+    </style>
+</head>
+<body>
+    <main>
+        <img src="asset/icones/icone-192.png" alt="" width="72" height="72">
+        <h1>Pas de réseau ici</h1>
+        <p>Cette page a besoin d'une connexion. Ta carte de pêche, elle, reste consultable : elle est enregistrée sur ton téléphone.</p>
+        <a class="btn-carte" href="carte_peche.php">Afficher ma carte de pêche</a>
+        <button type="button" onclick="location.reload()">Réessayer</button>
+    </main>
+</body>
+</html>

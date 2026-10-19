@@ -23,17 +23,116 @@ function getWindDirectionStr(degree) {
     return '';
 }
 
-// Fonction utilitaire pour tout rafraîchir d'un coup (Météo + Marée)
+function escapeHtmlCarte(valeur) {
+    return String(valeur ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+}
+
+// Fonction utilitaire pour tout rafraîchir d'un coup (Météo + Marée + Débit + Réserves)
 function refreshAllConditions(lat, lng) {
     fetchWeather(lat, lng);
-    
+    verifierReserves(lat, lng);
+
     let toggleMaree = document.getElementById('toggle-maree');
     let datetimeStr = document.querySelector('input[name="date_debut"]').value;
-    
+
     if (toggleMaree && toggleMaree.checked && datetimeStr) {
         let dateYMD = datetimeStr.split('T')[0];
         fetchTide(lat, lng, dateYMD);
+    } else if (datetimeStr && !spotEstEnMer()) {
+        fetchDebit(lat, lng, datetimeStr);
     }
+}
+
+// ------------------------------------------------------------------
+// Milieu du spot choisi (données du serveur : window.MPC_SPOTS)
+// ------------------------------------------------------------------
+function typeSpotChoisi() {
+    const select = document.getElementById('spot-select');
+    if (!select) return null;
+    if (select.value === 'new') return parseInt(document.getElementById('nouveau-type-spot')?.value, 10) || null;
+    const info = (window.MPC_SPOTS || {})[select.value];
+    return info ? info.type : null;
+}
+function spotEstEnMer() {
+    const t = typeSpotChoisi();
+    return t !== null && t >= 10; // 10 à 18 : milieux marins
+}
+function majPanneauCategorie() {
+    const panel = document.getElementById('categorie-panel');
+    if (!panel) return;
+    const t = typeSpotChoisi();
+    panel.hidden = !(t !== null && t <= 8);
+    const select = document.getElementById('spot-select');
+    const info = (window.MPC_SPOTS || {})[select.value];
+    const cat = document.getElementById('categorie-piscicole');
+    if (cat && select.value !== 'new') cat.value = info && info.categorie ? String(info.categorie) : '';
+}
+
+// ------------------------------------------------------------------
+// Zones de réserve : polygones publics fournis par le serveur (window.MPC_RESERVES)
+// ------------------------------------------------------------------
+function pointDansAnneau(lat, lng, anneau) {
+    let dedans = false;
+    for (let i = 0, j = anneau.length - 1; i < anneau.length; j = i++) {
+        const xi = anneau[i][0], yi = anneau[i][1], xj = anneau[j][0], yj = anneau[j][1];
+        if (((yi > lat) !== (yj > lat)) && (lng < (xj - xi) * (lat - yi) / ((yj - yi) || 1e-12) + xi)) dedans = !dedans;
+    }
+    return dedans;
+}
+function pointDansGeometrie(lat, lng, g) {
+    if (!g) return false;
+    const polygones = g.type === 'Polygon' ? [g.coordinates] : (g.type === 'MultiPolygon' ? g.coordinates : []);
+    return polygones.some(anneaux => anneaux.length && pointDansAnneau(lat, lng, anneaux[0])
+        && !anneaux.slice(1).some(trou => pointDansAnneau(lat, lng, trou)));
+}
+function verifierReserves(lat, lng) {
+    const zone = document.getElementById('alerte-reserve');
+    if (!zone) return;
+    const dedans = (window.MPC_RESERVES || []).filter(r => pointDansGeometrie(lat, lng, r.geometrie));
+    zone.hidden = dedans.length === 0;
+    zone.innerHTML = dedans.map(r => `<span class="material-symbols-rounded" aria-hidden="true">block</span>
+        <div><strong>Zone de réserve : ${escapeHtmlCarte(r.nom)}</strong><br>${escapeHtmlCarte(r.regle)}</div>`).join('<hr>');
+    if (dedans.length && navigator.vibrate) navigator.vibrate([120, 60, 120]);
+}
+
+// ------------------------------------------------------------------
+// Débit de la rivière au début de la session (Hub'eau) + alerte de montée des eaux
+// ------------------------------------------------------------------
+let debitAbort = null;
+function fetchDebit(lat, lng, datetimeStr) {
+    if (debitAbort) debitAbort.abort();
+    debitAbort = new AbortController();
+    ['input_debit', 'input_debit_ratio', 'input_station', 'input_cours_eau'].forEach(id => { const el = document.getElementById(id); if (el) el.value = ''; });
+    const badge = document.getElementById('ui_debit_badge');
+    if (badge) badge.hidden = true;
+
+    fetch(`fetch_riviere.php?action=session&lat=${encodeURIComponent(lat)}&lng=${encodeURIComponent(lng)}&date=${encodeURIComponent(datetimeStr)}`, { signal: debitAbort.signal })
+        .then(r => r.json())
+        .then(d => {
+            if (d.error || d.debit === undefined) return;
+            document.getElementById('input_debit').value = d.debit;
+            document.getElementById('input_debit_ratio').value = d.ratio ?? '';
+            document.getElementById('input_station').value = d.station;
+            document.getElementById('input_cours_eau').value = d.cours_eau || '';
+            if (badge) {
+                const ratio = d.ratio ? ` · ×${String(d.ratio).replace('.', ',')} la normale` : '';
+                document.getElementById('ui_debit').textContent = `${String(d.debit).replace('.', ',')} m³/s${ratio}`;
+                badge.hidden = false;
+                document.getElementById('weather-card').style.display = 'block';
+            }
+            afficherAlerteCrue(d.alerte);
+        })
+        .catch(() => {});
+}
+function afficherAlerteCrue(a) {
+    const zone = document.getElementById('alerte-crue');
+    if (!zone) return;
+    if (!a || !a.niveau) { zone.hidden = true; return; }
+    zone.className = 'alerte-terrain mb-3 ' + (a.niveau >= 2 ? 'alerte-danger' : 'alerte-warning');
+    zone.innerHTML = `<span class="material-symbols-rounded" aria-hidden="true">flood</span>
+        <div><strong>${escapeHtmlCarte(a.titre)}</strong><br>${escapeHtmlCarte(a.message)}</div>`;
+    zone.hidden = false;
+    if (a.niveau >= 2 && navigator.vibrate) navigator.vibrate([300, 100, 300, 100, 300]);
 }
 
 // LE CŒUR DU SYSTÈME : La récupération météo historique
@@ -47,7 +146,10 @@ function fetchWeather(lat, lng) {
     if(!datetimeStr) return;
 
     let dateYMD = datetimeStr.split('T')[0];
-    let targetHour = datetimeStr.substring(0, 13) + ":00"; 
+    let targetHour = datetimeStr.substring(0, 13) + ":00";
+    let veille = new Date(dateYMD + 'T12:00:00');
+    veille.setDate(veille.getDate() - 1);
+    let dateVeille = veille.toISOString().slice(0, 10);
     
     let sessionDate = new Date(datetimeStr);
     let today = new Date();
@@ -57,14 +159,14 @@ function fetchWeather(lat, lng) {
         ? "https://archive-api.open-meteo.com/v1/archive" 
         : "https://api.open-meteo.com/v1/forecast";
 
-    let url = `${baseUrl}?latitude=${lat}&longitude=${lng}&start_date=${dateYMD}&end_date=${dateYMD}&hourly=temperature_2m,pressure_msl,wind_speed_10m,wind_direction_10m,weathercode`;
+    let url = `${baseUrl}?latitude=${lat}&longitude=${lng}&start_date=${dateVeille}&end_date=${dateYMD}&hourly=temperature_2m,pressure_msl,wind_speed_10m,wind_direction_10m,weathercode&timezone=Europe%2FParis`;
 
     fetch(url)
     .then(response => response.json())
     .then(data => {
         if (data.hourly && Array.isArray(data.hourly.time) && data.hourly.time.length > 0) {
             let idx = data.hourly.time.findIndex(t => t.startsWith(targetHour));
-            if (idx === -1) idx = Math.min(12, data.hourly.time.length - 1);
+            if (idx === -1) idx = Math.min(36, data.hourly.time.length - 1); // midi du jour de la session
             // L'archive peut renvoyer null pour les heures pas encore consolidées
             if (data.hourly.temperature_2m[idx] === null || data.hourly.temperature_2m[idx] === undefined) return;
 
@@ -86,6 +188,20 @@ function fetchWeather(lat, lng) {
             document.getElementById('input_press').value = data.hourly.pressure_msl[idx];
             document.getElementById('input_wind').value = data.hourly.wind_speed_10m[idx];
             document.getElementById('input_direc').value = windDirText;
+
+            // Tendance barométrique (3 h et 24 h) : un des meilleurs indicateurs d'activité du poisson
+            const p = data.hourly.pressure_msl;
+            const t3 = (idx >= 3 && p[idx - 3] !== null) ? Math.round((p[idx] - p[idx - 3]) * 10) / 10 : null;
+            const t24 = (idx >= 24 && p[idx - 24] !== null) ? Math.round((p[idx] - p[idx - 24]) * 10) / 10 : null;
+            document.getElementById('input_tend3h').value = t3 ?? '';
+            document.getElementById('input_tend24h').value = t24 ?? '';
+            const badge = document.getElementById('ui_tendance_badge');
+            if (badge && t3 !== null) {
+                const sens = t3 <= -1 ? ['En baisse', 'trending_down'] : (t3 >= 1 ? ['En hausse', 'trending_up'] : ['Stable', 'trending_flat']);
+                document.getElementById('ui_tendance').textContent = `${sens[0]} (${t3 > 0 ? '+' : ''}${String(t3).replace('.', ',')} hPa/3 h)`;
+                document.getElementById('ui_tendance_icone').textContent = sens[1];
+                badge.hidden = false;
+            }
         }
     }).catch(error => console.log("Erreur météo historique:", error));
 }
@@ -196,6 +312,15 @@ document.addEventListener("DOMContentLoaded", function() {
     let zoom = (!isNaN(initLat) && initLat !== 0) ? 14 : 5;
     let map = L.map('map').setView(defaultView, zoom);
     L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', { attribution: '© OpenStreetMap' }).addTo(map);
+    (window.MPC_RESERVES || []).forEach(r => {
+        if (!r.geometrie) return;
+        L.geoJSON(r.geometrie, { style: { color: '#b42318', weight: 2, fillOpacity: 0.15 }, interactive: false }).addTo(map);
+    });
+    const spotSelect = document.getElementById('spot-select');
+    const typeNouveau = document.getElementById('nouveau-type-spot');
+    if (spotSelect) spotSelect.addEventListener('change', majPanneauCategorie);
+    if (typeNouveau) typeNouveau.addEventListener('change', majPanneauCategorie);
+    majPanneauCategorie();
 
     let marker = null;
 
