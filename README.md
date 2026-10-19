@@ -26,6 +26,15 @@ Conçue pour être utilisée directement au bord de l'eau grâce à son interfac
 * **Carte interactive globale (Leaflet.js) :** Visualisation de tous ses spots de pêche enregistrés avec des marqueurs dynamiques.
 * **Création tactile :** Ajout de nouveaux spots en cliquant/touchant directement la carte interactive.
 
+### Au bord de l'eau (V0.3)
+* **Conditions gagnantes :** le meilleur créneau des 3 prochains jours, comparé à tes meilleures sorties (pression et sa tendance, vent, marée, débit), et les tendances anonymes de la communauté par secteur.
+* **Garde-fou réglementaire :** alerte à la saisie si un poisson gardé est sous la taille légale, hors période ou au-delà du quota, ou si le point est dans une réserve.
+* **Vigilance crues :** montée brutale du débit et vigilance Vigicrues, avec bandeau, vibreur et notification.
+* **Porte-carte de pêche :** la carte et son QR code en grand, disponibles sans réseau.
+* **Application installable (PWA)** avec un mode « plein soleil » à fort contraste.
+
+Détails techniques, choix et limites : [EVOLUTIONS_V0.3.md](EVOLUTIONS_V0.3.md). Audit de sécurité : [AUDIT.md](AUDIT.md).
+
 ### Codex des Espèces
 * **Encyclopédie intégrée :** Plus de 100 espèces de poissons répertoriées avec tailles/poids maximums, descriptions, habitats et zones de répartition.
 * **Mise à jour Wikipedia :** Script backend (`maj_wikipedia.php`) capable d'interroger l'API Wikipedia pour enrichir automatiquement la base de données avec des descriptions scientifiques.
@@ -37,7 +46,9 @@ Conçue pour être utilisée directement au bord de l'eau grâce à son interfac
 **Front-end :**
 * HTML5 / CSS3 (Interface 100% Mobile First)
 * [Bootstrap 5](https://getbootstrap.com/) (Grilles, Modales, Composants UI)
-* Google Fonts : *Poppins* (Typographie) & *Material Symbols Rounded* (Icônes vectorielles)
+* Google Fonts : *Atkinson Hyperlegible* (texte) & *Material Symbols Rounded* (icônes)
+* Service worker et manifeste (application installable, carte de pêche hors-ligne)
+* PDF.js et jsQR (lecture de la carte de pêche dans le navigateur), QR Code Generator (affichage du QR)
 * [Leaflet.js](https://leafletjs.com/) (Cartographie OpenStreetMap)
 
 **Back-end & Base de Données :**
@@ -46,6 +57,9 @@ Conçue pour être utilisée directement au bord de l'eau grâce à son interfac
 
 **APIs Tiers :**
 * [Open-Meteo](https://open-meteo.com/) (Données météorologiques et archives)
+* [api-maree.fr](https://api-maree.fr/) (Marées, clé dans `cle/api-maree.php`)
+* [Hub'eau](https://hubeau.eaufrance.fr/) et [Vigicrues](https://www.vigicrues.gouv.fr/) (Débits, hauteurs d'eau, vigilance crues)
+* [geo.api.gouv.fr](https://geo.api.gouv.fr/) (Département d'un spot)
 * MediaWiki API (Descriptions encyclopédiques)
 
 ---
@@ -59,22 +73,22 @@ Ce projet est conçu pour tourner sur un environnement de serveur local standard
 
 2. **Base de données :**
    * Ouvrez phpMyAdmin (généralement `http://localhost/phpmyadmin`).
-   * Importez le script SQL fourni pour créer la base de données ainsi que toutes les tables et contraintes requises.
-   * Un jeu d'essai (espèces, types de leurres, habitats) est généralement inclus dans le script d'initialisation.
+   * Importez le dump de la base `mlr1`, puis, dans l'ordre, les migrations de `BDD/migrations/` (V0.2 puis V0.3).
+   * Facultatif : `php BDD/maj_conditions.php` complète les anciennes sessions (tendance de pression, débit, département).
 
 3. **Configuration de l'environnement :**
-   * Éditez le fichier `./bdd/env.php` (à créer si non existant) pour y placer vos identifiants de base de données :
+   * `BDD/env.php` contient les valeurs XAMPP par défaut (base `mlr1`, utilisateur `root`). Pour un autre poste ou le serveur, créez `BDD/env.local.php` (ignoré par Git) :
      ```php
      <?php
-     $host = 'localhost';
-     $dbname = 'MLR1';
-     $user = 'root';
-     $pass = ''; // Votre mot de passe local
-     ?>
+     $dbname = 'mlr1';
+     $pass = 'mot_de_passe';
+     define('APP_DEBUG', false); // en production
      ```
 
 4. **Dossier d'Uploads :**
-   * Assurez-vous que PHP dispose des droits d'écriture à la racine du projet pour générer le dossier `uploads/` qui contiendra les photos compressées des utilisateurs.
+   * PHP doit pouvoir écrire dans `uploads/` (photos) et `stockage_prive/` (cartes de pêche, interdit d'accès web).
+   * Extensions PHP nécessaires : `gd` (avec WebP), `fileinfo`, `exif`, `curl`.
+   * En production, servez le site en **HTTPS** : c'est indispensable pour l'application installable, le hors-ligne et les notifications.
 
 ---
 
@@ -86,3 +100,7 @@ Ce projet est conçu pour tourner sur un environnement de serveur local standard
 
 ---
 *Projet développé dans le cadre d'un carnet d'apprentissage personnel (BUT Info).*
+
+---
+
+Développé avec l'aide d'outils d'IA (Claude) pour l'audit, la V0.3 et la documentation, puis testé et relu.
