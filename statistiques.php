@@ -96,7 +96,8 @@ require_once './BDD/BDD_stat.php';
         </div>
 
         <!-- Bilan par Espèce -->
-        <h6 class="fw-bold text-secondary text-uppercase mb-3 mt-4">Bilan par Espèce</h6>
+        <h6 class="fw-bold text-secondary text-uppercase mb-1 mt-4">Bilan par espèce</h6>
+        <p class="small text-muted mb-3">Touche une espèce pour voir ses moyennes, ton record, ton meilleur leurre et sa saison.</p>
         <div class="card border-0 shadow-sm rounded-4 mb-4 bg-white overflow-hidden">
             <ul class="list-group list-group-flush">
                 <?php if(empty($liste_especes)): ?>
@@ -105,26 +106,26 @@ require_once './BDD/BDD_stat.php';
                     <?php foreach($liste_especes as $esp): 
                         $pourcentage = round(($esp['nb'] / $total_poissons) * 100);
                     ?>
-                    <li class="list-group-item p-3 d-flex align-items-center justify-content-between">
-                        <div class="d-flex align-items-center">
-                            <?php if(!empty($esp['ICONE_CHEMIN'])): ?>
-                                <img loading="lazy" src="<?= e(icone_legere($esp['ICONE_CHEMIN'])) ?>" style="width: 35px; height: 35px; object-fit: contain;" class="me-3">
-                            <?php endif; ?>
-                            <div>
-                                <h6 class="fw-bold mb-0 text-dark"><?= e($esp['NOM_COM']) ?></h6>
-                                <small class="text-muted">
-                                    <span class="fw-bold text-primary"><?= (int) $esp['nb'] ?></span> prise(s) (<?= (int) $pourcentage ?>%)
-                                </small>
-                            </div>
-                        </div>
-                        <?php if(!empty($esp['pb_cm'])): ?>
-                            <div class="text-end">
-                                <span class="badge bg-warning bg-opacity-25 text-dark border border-warning rounded-pill">
-                                    <span class="material-symbols-rounded align-middle fs-6 text-warning">emoji_events</span> 
-                                    <?= e($esp['pb_cm']) ?> cm
+                    <li class="list-group-item p-0">
+                        <button type="button" class="ligne-espece" data-espece="<?= (int) $esp['ID_ESPECE'] ?>" aria-haspopup="dialog">
+                            <span class="d-flex align-items-center min-w-0">
+                                <?php if(!empty($esp['ICONE_CHEMIN'])): ?>
+                                    <img loading="lazy" src="<?= e(icone_legere($esp['ICONE_CHEMIN'])) ?>" alt="" style="width: 35px; height: 35px; object-fit: contain;" class="me-3">
+                                <?php endif; ?>
+                                <span class="text-start min-w-0">
+                                    <strong class="d-block text-dark"><?= e($esp['NOM_COM']) ?></strong>
+                                    <small class="text-muted"><span class="fw-bold text-primary"><?= (int) $esp['nb'] ?></span> prise(s) (<?= (int) $pourcentage ?> %)</small>
                                 </span>
-                            </div>
-                        <?php endif; ?>
+                            </span>
+                            <span class="d-flex align-items-center gap-2">
+                                <?php if(!empty($esp['pb_cm'])): ?>
+                                    <span class="badge bg-warning bg-opacity-25 text-dark border border-warning rounded-pill">
+                                        <span class="material-symbols-rounded align-middle fs-6 text-warning" aria-hidden="true">emoji_events</span> <?= e($esp['pb_cm']) ?> cm
+                                    </span>
+                                <?php endif; ?>
+                                <span class="material-symbols-rounded text-muted" aria-hidden="true">chevron_right</span>
+                            </span>
+                        </button>
                     </li>
                     <?php endforeach; ?>
                 <?php endif; ?>
@@ -132,12 +133,23 @@ require_once './BDD/BDD_stat.php';
         </div>
 
         <!-- Graphique : Moment de la journée -->
-        <h6 class="fw-bold text-secondary text-uppercase mb-3 mt-4">Activité moyenne par heure</h6>
+        <h6 class="fw-bold text-secondary text-uppercase mb-3 mt-4">Tes heures de pêche</h6>
         <div class="card border-0 shadow-sm rounded-4 mb-4 bg-white p-3">
             <?php if($total_poissons > 0): ?>
+                <?php if ($meilleure_heure): ?>
+                    <p class="resume-heures mb-2">
+                        <strong><?= (int) $meilleure_heure['heure'] ?> h – <?= ((int) $meilleure_heure['heure'] + 1) % 24 ?> h</strong> est ton créneau le plus rentable :
+                        <?= e(str_replace('.', ',', (string) round($meilleure_heure['rendement'], 1))) ?> poisson(s) par heure de pêche
+                        (<?= (int) $meilleure_heure['poissons'] ?> poisson(s) en <?= e(str_replace('.', ',', (string) round($meilleure_heure['heures'], 1))) ?> h passées à cette heure-là).
+                    </p>
+                <?php endif; ?>
+                <?php if ($heure_plus_de_poissons !== null): ?>
+                    <p class="small text-muted mb-2">C'est entre <?= (int) $heure_plus_de_poissons ?> h et <?= ($heure_plus_de_poissons + 1) % 24 ?> h que tu as pris le plus de poissons (<?= e(str_replace('.', ',', (string) $repartition_heures[$heure_plus_de_poissons])) ?> % du total).</p>
+                <?php endif; ?>
                 <div class="chart-container-sm">
-                    <canvas id="heuresChart"></canvas>
+                    <canvas id="heuresChart" aria-label="Part de tes poissons et rendement, heure par heure"></canvas>
                 </div>
+                <p class="small text-muted mt-2 mb-0">Barres : part de tes poissons pris à chaque heure. Courbe : poissons par heure passée au bord de l'eau à cette heure-là (affichée à partir d'1 h de pêche cumulée sur le créneau).</p>
             <?php else: ?>
                 <p class="text-muted text-center small my-4">Pas encore assez de données.</p>
             <?php endif; ?>
@@ -324,54 +336,72 @@ require_once './BDD/BDD_stat.php';
 
     </main>
 
+    <!-- Détail d'une espèce -->
+    <div class="modal fade" id="modal-espece" tabindex="-1" aria-labelledby="modal-espece-titre" aria-hidden="true">
+        <div class="modal-dialog modal-dialog-centered modal-dialog-scrollable modal-fullscreen-sm-down">
+            <div class="modal-content rounded-4 border-0">
+                <div class="modal-header border-0 pb-0">
+                    <h2 class="modal-title h5 fw-bold d-flex align-items-center gap-2" id="modal-espece-titre"></h2>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Fermer"></button>
+                </div>
+                <div class="modal-body" id="modal-espece-corps"></div>
+            </div>
+        </div>
+    </div>
+
     <?php include './includes/navbar.php'; ?>
 
     <script>
+        const STATS_ESPECES = <?= js((object) $stats_especes) ?>;
+        const ESPECES_BILAN = <?= js((object) array_column(array_map(fn($e) => ['id' => (int) $e['ID_ESPECE'], 'nom' => $e['NOM_COM'], 'icone' => icone_legere($e['ICONE_CHEMIN'])], $liste_especes), null, 'id')) ?>;
+    </script>
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/js/bootstrap.bundle.min.js"></script>
+    <script src="script/stats_espece.js?v=4"></script>
+    <script>
         document.addEventListener('DOMContentLoaded', function() {
-            Chart.defaults.font.family = "'Poppins', sans-serif";
+            Chart.defaults.font.family = "'Atkinson Hyperlegible', sans-serif";
             
             <?php if($total_poissons > 0): ?>
             
-            // 1. Graphique Activité par Heure (Boucle 0h -> 23h -> 0h)
+            // 1. Heures : répartition des prises (barres) et rendement réel (courbe)
             const ctxHeures = document.getElementById('heuresChart').getContext('2d');
             new Chart(ctxHeures, {
-                type: 'line',
                 data: {
                     labels: <?= js($labels_heures) ?>,
                     datasets: [{
-                        label: 'Prises / Session',
-                        data: <?= js(array_values($valeurs_heures_touches)) ?>,
-                        borderColor: '#f59e0b',
-                        backgroundColor: 'rgba(245, 158, 11, 0.2)',
+                        type: 'bar',
+                        label: 'Part de tes poissons (%)',
+                        data: <?= js($repartition_heures) ?>,
+                        backgroundColor: 'rgba(31, 90, 102, 0.75)',
+                        borderRadius: 4,
+                        yAxisID: 'y',
+                        order: 2
+                    }, {
+                        type: 'line',
+                        label: 'Poissons par heure de pêche',
+                        data: <?= js($rendement_heures) ?>,
+                        borderColor: '#c4430c',
+                        backgroundColor: '#c4430c',
                         borderWidth: 3,
-                        fill: true,
-                        tension: 0.4, 
-                        pointBackgroundColor: '#fff',
-                        pointBorderColor: '#f59e0b',
-                        pointBorderWidth: 2,
-                        pointRadius: function(context) {
-                            return context.dataIndex === 0 || context.dataIndex === 24 ? 0 : 4; 
-                        }
+                        tension: 0.35,
+                        spanGaps: false,
+                        pointRadius: 3,
+                        yAxisID: 'y1',
+                        order: 1
                     }]
                 },
                 options: {
                     responsive: true,
                     maintainAspectRatio: false,
                     interaction: { mode: 'index', intersect: false },
-                    plugins: { legend: { display: false } },
+                    plugins: {
+                        legend: { display: true, position: 'bottom', labels: { boxWidth: 12, font: { size: 11 } } },
+                        tooltip: { callbacks: { label: c => c.raw === null ? `${c.dataset.label} : moins d'1 h de pêche` : `${c.dataset.label} : ${String(c.raw).replace('.', ',')}` } }
+                    },
                     scales: {
-                        x: { 
-                            grid: { display: false }, 
-                            ticks: { 
-                                font: {size: 10},
-                                maxTicksLimit: 12 
-                            } 
-                        },
-                        y: { 
-                            type: 'linear', display: true, beginAtZero: true,
-                            title: { display: true, text: 'Prises / Session', font: {size: 10} },
-                            ticks: { font: {size: 10} }
-                        }
+                        x: { grid: { display: false }, ticks: { font: { size: 10 }, maxTicksLimit: 12 } },
+                        y: { beginAtZero: true, position: 'left', title: { display: true, text: '% des poissons', font: { size: 10 } }, ticks: { font: { size: 10 } } },
+                        y1: { beginAtZero: true, position: 'right', grid: { drawOnChartArea: false }, title: { display: true, text: 'poissons / heure', font: { size: 10 } }, ticks: { font: { size: 10 } } }
                     }
                 }
             });
