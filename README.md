@@ -14,7 +14,8 @@ Conçue pour être utilisée directement au bord de l'eau grâce à son interfac
 
 ### Sessions & Prises Intelligentes
 * **Création de session multi-étapes :** Enregistrement fluide du lieu, de la date et du milieu (eau douce ou mer avec gestion des coefficients de marée).
-* **Extraction EXIF :** Upload de photos avec récupération automatique de l'heure exacte et des coordonnées GPS de la capture.
+* **Extraction EXIF :** Upload de photos avec récupération automatique de l'heure exacte et des coordonnées GPS de la capture (lues dans le navigateur avant la réduction, puis relues par le serveur).
+* **Photos par prise :** ajout des photos directement sur chaque prise à l'étape 3, espèces les plus prises proposées en premier.
 * **Compression d'images :** Redimensionnement et optimisation des photos à la volée côté serveur pour économiser de l'espace.
 * **Météo Historique & Direct (Open-Meteo API) :** Récupération automatique de la température, pression atmosphérique, vent et couverture nuageuse en fonction du point GPS et de l'heure exacte de la session.
 
@@ -33,7 +34,15 @@ Conçue pour être utilisée directement au bord de l'eau grâce à son interfac
 * **Porte-carte de pêche :** la carte et son QR code en grand, disponibles sans réseau.
 * **Application installable (PWA)** avec un mode « plein soleil » à fort contraste.
 
-Détails techniques, choix et limites : [EVOLUTIONS_V0.3.md](EVOLUTIONS_V0.3.md). Audit de sécurité : [AUDIT.md](AUDIT.md).
+### Communauté et profil (V0.4)
+* **Fil « Au bord de l'eau » :** les dernières prises partagées par les membres, avec photos, espèce, mesures et lieu large (jamais le spot ni le GPS).
+* **Classements du mois :** plus gros poisson et plus de prises par espèce, assiduité, polyvalence, no-kill.
+* **Garde-fou biologique :** une taille ou un poids impossible pour l'espèce est refusé, un record possible est signalé.
+* **Profil enrichi :** niveau, région, techniques, bio, sessions sur 2 colonnes, chaque session masquable, visionneuse de photos.
+* **Statistiques :** rendement réel par heure de pêche, fiche détaillée par espèce (moyennes, record, meilleur leurre, saisonnalité).
+* **Marées sur 7 jours**, lecture du QR de la carte de pêche même à l'envers, page **Réglementation** ouverte à tous.
+
+Détails techniques, choix et limites : [V0.4](docs/EVOLUTIONS_V0.4.md), [V0.3](docs/EVOLUTIONS_V0.3.md). Audit de sécurité : [AUDIT_V0.2.md](docs/AUDIT_V0.2.md).
 
 ### Codex des Espèces
 * **Encyclopédie intégrée :** Plus de 100 espèces de poissons répertoriées avec tailles/poids maximums, descriptions, habitats et zones de répartition.
@@ -73,7 +82,8 @@ Ce projet est conçu pour tourner sur un environnement de serveur local standard
 
 2. **Base de données :**
    * Ouvrez phpMyAdmin (généralement `http://localhost/phpmyadmin`).
-   * Importez le dump de la base `mlr1`, puis, dans l'ordre, les migrations de `BDD/migrations/` (V0.2 puis V0.3).
+   * Importez le dump de la base `mlr1`, puis, dans l'ordre, les migrations de `BDD/migrations/` (V0.2, V0.3, puis V0.4).
+   * Ne publiez jamais un dump de la base : il contient les e-mails et les mots de passe chiffrés des membres (`*.sql` est ignoré par Git, sauf les migrations).
    * Facultatif : `php BDD/maj_conditions.php` complète les anciennes sessions (tendance de pression, débit, département).
 
 3. **Configuration de l'environnement :**
@@ -103,4 +113,4 @@ Ce projet est conçu pour tourner sur un environnement de serveur local standard
 
 ---
 
-Développé avec l'aide d'outils d'IA (Claude) pour l'audit, la V0.3 et la documentation, puis testé et relu.
+Développé avec l'aide d'outils d'IA (Claude) pour l'audit, les V0.3 et V0.4 et la documentation, puis testé et relu.
