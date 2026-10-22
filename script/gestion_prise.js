@@ -141,6 +141,9 @@ function attachDropdownEvents() {
         if (searchInput) {
             searchInput.addEventListener('input', function () {
                 const term = normaliser(this.value);
+                // Pendant une recherche, l'accès rapide « espèces les plus pêchées » ferait doublon
+                const favorites = dropdown.querySelector('.espece-favorites');
+                if (favorites) favorites.style.display = term ? 'none' : '';
                 options.forEach(opt => {
                     // data-nom : le nom seul (innerText contiendrait aussi le texte de l'icône "set_meal")
                     const visible = normaliser(opt.dataset.nom || opt.textContent).includes(term);

@@ -301,6 +301,13 @@ function fetchTide(lat, lng, dateYMD) {
 // INITIALISATION DE LA CARTE ET ÉVÉNEMENTS
 // ==========================================
 document.addEventListener("DOMContentLoaded", function() {
+    // Catégorie piscicole : indépendante de la carte (elle doit marcher même si Leaflet n'a pas pu se charger)
+    const spotSelect = document.getElementById('spot-select');
+    const typeNouveau = document.getElementById('nouveau-type-spot');
+    if (spotSelect) spotSelect.addEventListener('change', majPanneauCategorie);
+    if (typeNouveau) typeNouveau.addEventListener('change', majPanneauCategorie);
+    majPanneauCategorie();
+
     // Script chargé uniquement là où il y a une carte : on sort proprement sinon
     if (!document.getElementById('map') || typeof L === 'undefined') return;
     let latInput = document.getElementById('input_lat');
@@ -316,11 +323,6 @@ document.addEventListener("DOMContentLoaded", function() {
         if (!r.geometrie) return;
         L.geoJSON(r.geometrie, { style: { color: '#b42318', weight: 2, fillOpacity: 0.15 }, interactive: false }).addTo(map);
     });
-    const spotSelect = document.getElementById('spot-select');
-    const typeNouveau = document.getElementById('nouveau-type-spot');
-    if (spotSelect) spotSelect.addEventListener('change', majPanneauCategorie);
-    if (typeNouveau) typeNouveau.addEventListener('change', majPanneauCategorie);
-    majPanneauCategorie();
 
     let marker = null;
 
