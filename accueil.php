@@ -1,6 +1,7 @@
 <?php
 require_once './includes/auth_bdd.php';
-require_once './BDD/BDD_accueil.php'; 
+require_once './BDD/BDD_accueil.php';
+require_once './includes/communaute.php';
 
 $pdo = db();
 
@@ -23,6 +24,9 @@ $stmtPrises = $pdo->prepare("
 ");
 $stmtPrises->execute(['id_user' => $_SESSION['user_id']]);
 $dernieres_prises = $stmtPrises->fetchAll(PDO::FETCH_ASSOC);
+
+// 3. Fil de la communauté (aperçu) : dernières prises partagées, sans lieu précis
+$fil = fil_actualite($pdo, 4);
 
 // Nettoyage des photos abandonnées (au plus une fois par heure et par session)
 if (empty($_SESSION['dernier_nettoyage']) || $_SESSION['dernier_nettoyage'] < time() - 3600) {
@@ -120,7 +124,30 @@ if (empty($_SESSION['dernier_nettoyage']) || $_SESSION['dernier_nettoyage'] < ti
             <span class="material-symbols-rounded text-muted" aria-hidden="true" style="font-size:24px">chevron_right</span>
         </a>
 
-        <!-- Section Outils (Transformée en grille moderne 2x2) -->
+        <!-- Fil de la communauté -->
+        <section class="mb-5" aria-labelledby="titre-fil">
+            <div class="d-flex justify-content-between align-items-end mb-3">
+                <h2 class="h6 fw-bold text-secondary mb-0" id="titre-fil">Au bord de l'eau</h2>
+                <a href="fil.php" class="text-primary small text-decoration-none fw-medium">Tout le fil</a>
+            </div>
+            <a href="classements.php" class="lien-classements mb-3">
+                <span class="material-symbols-rounded" aria-hidden="true">military_tech</span>
+                <span class="flex-grow-1"><strong class="d-block">Classements du mois</strong><small>Plus gros poissons, assiduité, polyvalence, no-kill</small></span>
+                <span class="material-symbols-rounded" aria-hidden="true">chevron_right</span>
+            </a>
+            <?php if ($fil['prises']): ?>
+                <div class="fil fil-apercu">
+                    <?php foreach ($fil['prises'] as $p) carte_fil($p); ?>
+                </div>
+                <a href="fil.php" class="btn btn-light rounded-pill w-100 py-3 fw-bold mt-2">Voir plus de prises</a>
+            <?php else: ?>
+                <div class="card border-0 shadow-sm rounded-4 text-center p-4">
+                    <p class="text-muted mb-0 small">Les prises avec photo partagées par les membres apparaîtront ici.</p>
+                </div>
+            <?php endif; ?>
+        </section>
+
+        <!-- Section Outils (grille 2 colonnes) -->
         <div class="d-flex justify-content-between align-items-end mb-3">
             <h2 class="h6 fw-bold text-secondary text-uppercase mb-0">Mes Outils</h2>
         </div>
@@ -177,11 +204,37 @@ if (empty($_SESSION['dernier_nettoyage']) || $_SESSION['dernier_nettoyage'] < ti
                     </div>
                 </a>
             </div>
+
+            <!-- Tuile 5 : Réglementation -->
+            <div class="col-6">
+                <a href="reglementation.php" class="card border-0 shadow-sm rounded-4 text-decoration-none h-100 tool-card bg-white">
+                    <div class="card-body text-center p-3">
+                        <div class="bg-danger bg-opacity-10 text-danger rounded-circle d-inline-flex align-items-center justify-content-center mb-2" style="width: 55px; height: 55px;">
+                            <span class="material-symbols-rounded fs-2">gavel</span>
+                        </div>
+                        <h6 class="fw-bold text-dark mb-1" style="font-size: 0.9rem;">Réglementation</h6>
+                        <small class="text-muted d-block" style="font-size: 0.7rem;">Tailles, dates, quotas</small>
+                    </div>
+                </a>
+            </div>
+
+            <!-- Tuile 6 : Classements -->
+            <div class="col-6">
+                <a href="classements.php" class="card border-0 shadow-sm rounded-4 text-decoration-none h-100 tool-card bg-white">
+                    <div class="card-body text-center p-3">
+                        <div class="bg-warning bg-opacity-10 text-warning rounded-circle d-inline-flex align-items-center justify-content-center mb-2" style="width: 55px; height: 55px;">
+                            <span class="material-symbols-rounded fs-2">military_tech</span>
+                        </div>
+                        <h6 class="fw-bold text-dark mb-1" style="font-size: 0.9rem;">Classements</h6>
+                        <small class="text-muted d-block" style="font-size: 0.7rem;">Le mois en cours</small>
+                    </div>
+                </a>
+            </div>
         </div>
 
         <!-- Section : Dernières prises avec données dynamiques -->
         <div class="d-flex justify-content-between align-items-end mb-3">
-            <h2 class="h6 fw-bold text-secondary text-uppercase mb-0">Dernières prises</h2>
+            <h2 class="h6 fw-bold text-secondary text-uppercase mb-0">Mes dernières prises</h2>
             <?php if (!empty($dernieres_prises)): ?>
                 <a href="profil.php" class="text-primary small text-decoration-none fw-medium">Tout voir</a>
             <?php endif; ?>
