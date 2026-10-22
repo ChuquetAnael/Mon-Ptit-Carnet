@@ -5,22 +5,24 @@ BDD :
 
 
 Ajout session :
-
+    sur telephone quand j'ajoute une photo dans nouvelle session les données Exif de la positions sont pas recuperer mais la date si (a voir car je suis pas en https je me suis simplement connecter a l'ip de mon pc)
+    Quand on selectionne l'espece dans l'étape 3 : proposer d'abord les plus prise par le pecheur pour gagner du temps au lieu de rechercher a chaque fois 
 
 maree :
     pouvoir visualisé la maree sur les 7 prochain jour (garder en tete que l'api maree est limiter)
 
-
 Coté reseau sociale : 
-    pouvoir mettre plusieurs photo pour une prise (refaire car j'aime pas trop le systeme actuelle)
+    pouvoir mettre plusieurs photo pour une prise (refaire car j'aime pas trop le systeme actuelle, je voudrais plutot ajouter les images supplementaire a l'étape 3 plutot que les mettre a la 1 et les liée aprés)
     Laisser le systeme de session epinglé mais faire en sorte que ce soit pas les seules sessions visible sur le profil, et pouvoir sur son profil masquer des sessions pour les autres
     Pouvoir mettre plus d'info sur son profil (experience, region, type de pecheur...) le rendre encore plus unique et personalisable
 
 Statistique : 
     Dans activité moyenne par heure les donnees sont bizare : ex pour 22h j'ai prise/session 0.09, je pense qu'il faudrait revoir la chose
+    Dans bilan par espece pouvoir cliquer sur les espece et avoir quelque stat en plus sur l'espece (taille moy, poid moy, meilleur leurre ...)
 
-Visuel :
+Profil :
     Sur telephone afficher plusieurs session sur une ligne dans le profil car 1 sa fait un peu etroit
+    Pouvoir cliquer sur une prise pour voir sa ou ses photos en plus grand si il y en a
 
 Carte de peche: :
     Quand on telecharge la carte de peche sur cartedepeche.fr le qr code sur le pdf est a l'envers il faut trouver une solution pour que le site le detecte quand meme
