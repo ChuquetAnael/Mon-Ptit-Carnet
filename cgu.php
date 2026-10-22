@@ -43,7 +43,7 @@ require_once './includes/bootstrap.php';
             </h2>
             <p class="text-secondary small text-justify">
                 Nous savons à quel point le secret d'un bon coin de pêche est précieux. Il est ici expressément garanti à l'utilisateur que <strong>les coordonnées GPS exactes de ses spots et de ses prises sont strictement privées</strong>. <br><br>
-                Même dans l'éventualité du déploiement de fonctionnalités publiques (comme un fil d'actualité ou des classements), la localisation précise de vos captures ne sera jamais divulguée publiquement sans votre action explicite.
+                Le profil public, le fil d'actualité et les classements (article 10) n'affichent <strong>jamais</strong> le nom d'un spot ni une position : le lieu d'une prise se limite au milieu (eau douce, mer, estuaire) et au département.
             </p>
         </div>
 
@@ -124,7 +124,33 @@ require_once './includes/bootstrap.php';
             <p class="text-secondary small text-justify">
                 Les prévisions « Conditions gagnantes » comparent les prévisions météorologiques aux conditions des sorties de l'utilisateur. Elles sont calculées pour lui seul et constituent une estimation, sans garantie de résultat.<br><br>
                 Le mode « Communauté » présente des statistiques construites à partir des prises de l'ensemble des membres, <strong>sous forme anonymisée et agrégée</strong> : seuls l'espèce, les conditions (pression, vent, marée, débit, heure, saison) et une zone large (façade maritime, département, cours d'eau ou milieu) sont utilisés. Les coordonnées des spots et des prises, leurs noms, les photos et l'identité des membres ne sont jamais utilisés ni affichés. Un résultat n'apparaît qu'à partir de 10 prises provenant d'au moins 3 pêcheurs différents, afin qu'aucune habitude individuelle ne puisse être déduite.<br><br>
-                Chaque membre peut retirer ses prises de ces statistiques à tout moment depuis <a href="parametre.php">Paramètres &gt; Statistiques communautaires</a>.
+                Chaque membre peut retirer ses prises de ces statistiques à tout moment depuis <a href="parametre.php">Paramètres &gt; Partage communautaire</a>.
+            </p>
+        </div>
+
+        <!-- 10. Profil public, fil d'actualité et classements -->
+        <div class="card border-0 shadow-sm rounded-4 p-4 mb-4 bg-white">
+            <h2 class="h5 fw-bold text-dark d-flex align-items-center mb-3">
+                <span class="material-symbols-rounded text-primary me-2">groups</span> 10. Profil public, fil d'actualité et classements
+            </h2>
+            <p class="text-secondary small text-justify">
+                Ces contenus ne sont visibles que des membres connectés, jamais du grand public ni des moteurs de recherche.<br><br>
+                <strong>Profil :</strong> le pseudo, la photo de profil, la bannière, la bio et, s'il les renseigne, le niveau, l'année de début, le département, le milieu préféré, l'espèce de cœur, les techniques et les types de pêche du membre sont visibles des autres membres. Ces informations sont facultatives et modifiables à tout moment.<br><br>
+                <strong>Sessions :</strong> par défaut, les sessions d'un membre sont visibles sur son profil (prises, photos, date, conditions, milieu et département), sans le nom du spot ni aucune position. Chaque session peut être masquée individuellement (ou toutes d'un coup) depuis le profil ou le détail de la session : elle n'est alors visible que de son auteur, et elle n'apparaît plus ni dans le fil ni dans les classements.<br><br>
+                <strong>Fil d'actualité :</strong> il présente les dernières prises avec photo des membres qui ont laissé le partage communautaire activé, issues de sessions visibles : pseudo, photo de profil, espèce, taille, poids, date, milieu et département. Seules les photos que la modération laisse visibles y figurent.<br><br>
+                <strong>Classements du mois :</strong> ils mettent en avant, par pseudo, les plus gros poissons par espèce, le nombre de prises, le temps passé au bord de l'eau, le nombre d'espèces différentes et les poissons relâchés, à partir des mêmes sessions. Pour limiter la triche, les tailles et poids impossibles pour l'espèce sont écartés, une ligne de prise compte au plus pour 100 poissons et une session au plus pour 72 heures. Les classements n'ont aucune valeur officielle et ne donnent droit à aucune récompense.<br><br>
+                Chaque membre peut retirer toutes ses prises du fil, des classements et des statistiques communautaires depuis <a href="parametre.php">Paramètres &gt; Partage communautaire</a>. Une saisie volontairement fausse ou trompeuse peut être supprimée par la modération (article 4).
+            </p>
+        </div>
+
+        <!-- 11. Saisie des prises -->
+        <div class="card border-0 shadow-sm rounded-4 p-4 mb-4 bg-white">
+            <h2 class="h5 fw-bold text-dark d-flex align-items-center mb-3">
+                <span class="material-symbols-rounded text-primary me-2">straighten</span> 11. Saisie des prises : tailles, poids et position
+            </h2>
+            <p class="text-secondary small text-justify">
+                <strong>Contrôle des tailles et poids :</strong> une taille ou un poids qui dépasse de plus de 15 % le maximum connu de l'espèce (codex), ou un poids incohérent avec la taille, est refusé à l'enregistrement. Si un véritable record est bloqué, le membre peut le signaler via le formulaire de contact afin que la valeur de référence soit vérifiée.<br><br>
+                <strong>Position des photos :</strong> la position GPS contenue dans une photo est lue au moment de l'envoi pour situer la prise dans le carnet du membre (donnée privée), puis retirée du fichier enregistré. Certains téléphones retirent eux-mêmes cette position avant l'envoi. Dans ce cas, et seulement pour une photo prise dans les 3 dernières heures, l'application peut utiliser la position actuelle du téléphone, après l'autorisation du navigateur, que le membre peut refuser ou retirer à tout moment.
             </p>
         </div>
 </main>

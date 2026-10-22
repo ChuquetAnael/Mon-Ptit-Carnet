@@ -16,7 +16,9 @@ $message_succes = '';
 if (isset($_POST['partage_communaute'])) {
     $partage = $_POST['partage_communaute'] === '1' ? 1 : 0;
     $pdo->prepare("UPDATE utilisateur SET PARTAGE_COMMUNAUTE = ? WHERE ID_UTILISATEUR = ?")->execute([$partage, $id_user]);
-    $message_succes = $partage ? "Tes prises participent de nouveau aux statistiques communautaires (de façon anonyme)." : "Tes prises ne sont plus utilisées dans les statistiques communautaires.";
+    $message_succes = $partage
+        ? "Tes prises apparaissent de nouveau dans le fil, les classements et les statistiques communautaires."
+        : "Tes prises n'apparaissent plus dans le fil, les classements ni les statistiques communautaires.";
 }
 $stmtPartage = $pdo->prepare("SELECT PARTAGE_COMMUNAUTE FROM utilisateur WHERE ID_UTILISATEUR = ?");
 $stmtPartage->execute([$id_user]);
@@ -125,13 +127,13 @@ if (isset($_POST['delete_account']) && !empty($_POST['password_confirm'])) {
                     <div class="d-flex align-items-start gap-3">
                         <span class="material-symbols-rounded text-primary" aria-hidden="true">groups</span>
                         <div class="flex-grow-1">
-                            <span class="text-dark fw-semibold d-block">Statistiques communautaires</span>
+                            <span class="text-dark fw-semibold d-block">Partage communautaire</span>
                             <small class="text-muted d-block mb-2">
                                 <?= $partage_actif
-                                    ? "Tes prises aident les autres pêcheurs, de façon anonyme : seules l'espèce, les conditions et une zone large (département, façade, cours d'eau) sont utilisées. Jamais tes spots ni ta position."
-                                    : "Tes prises ne sont pas utilisées dans les statistiques communautaires." ?>
+                                    ? "Tes prises avec photo apparaissent dans le fil d'actualité et tes résultats du mois dans les classements, sous ton pseudo. Elles alimentent aussi les statistiques anonymes. Jamais tes spots ni ta position. Pour une sortie en particulier, masque la session depuis ton profil."
+                                    : "Tes prises n'apparaissent ni dans le fil, ni dans les classements, ni dans les statistiques communautaires." ?>
                             </small>
-                            <button class="btn btn-sm <?= $partage_actif ? 'btn-light' : 'btn-primary' ?> rounded-pill px-3"><?= $partage_actif ? 'Ne plus partager mes prises' : 'Partager mes prises anonymement' ?></button>
+                            <button class="btn btn-sm <?= $partage_actif ? 'btn-light' : 'btn-primary' ?> rounded-pill px-3"><?= $partage_actif ? 'Ne plus partager mes prises' : 'Partager mes prises' ?></button>
                         </div>
                     </div>
                 </form>

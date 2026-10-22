@@ -5,15 +5,15 @@
  * - Carte de pêche : la page et le fichier sont gardés dans un cache dédié pour s'afficher en zone blanche.
  *   Ce cache est vidé à la déconnexion.
  */
-const VERSION = 'v3';
+const VERSION = 'v4';
 const CACHE_STATIQUE = 'mpc-statique-' + VERSION;
 const CACHE_CARTE = 'mpc-carte'; // non versionné : la carte reste disponible après une mise à jour de l'application
 
 const PRECACHE = [
     'offline.html',
     'css/style.css',
-    'css/app.css?v=3',
-    'script/app.js?v=3',
+    'css/app.css?v=4',
+    'script/app.js?v=4',
     'script/vendor/qrcode.js',
     'manifest.webmanifest',
     'asset/icones/icone-192.png',

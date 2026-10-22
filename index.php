@@ -20,7 +20,7 @@ if (utilisateur_id()) {
     <link rel="icon" type="image/png" sizes="32x32" href="asset/icones/icone-32.png">
     <link rel="apple-touch-icon" href="asset/icones/icone-180.png">
     <!-- Efface la carte de pêche gardée hors-ligne après une déconnexion -->
-    <script src="script/app.js?v=3" defer></script>
+    <script src="script/app.js?v=4" defer></script>
 
     <!-- Bootstrap 5 CSS -->
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/css/bootstrap.min.css" rel="stylesheet">

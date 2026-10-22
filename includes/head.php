@@ -22,5 +22,6 @@
 
 <!-- fichiers CSS externes -->
 <link href="css/style.css" rel="stylesheet">
-<link href="css/app.css?v=3" rel="stylesheet">
-<script src="script/app.js?v=3" defer></script>
+<link href="css/app.css?v=4" rel="stylesheet">
+<script src="script/app.js?v=4" defer></script>
+<script src="script/visionneuse.js?v=4" defer></script>
