@@ -1,6 +1,7 @@
 <?php
 require_once './includes/auth_bdd.php';
 require_once './includes/reglementation.php';
+require_once './includes/saisie.php';
 
 $pdo = db();
 $id_user = (int) $_SESSION['user_id'];
@@ -61,6 +62,7 @@ $ctx_regles = contexte_session_existante(
 );
 $regles = regles_resolues($pdo, $ctx_regles);
 $gardes_jour = gardes_du_jour($pdo, $id_user, $date_base, $id_prise);
+$limites_bio = limites_biologiques($pdo);
 
 // =========================================================================
 // 2. TRAITEMENT DU FORMULAIRE ENVOYÉ (POST)
@@ -77,10 +79,16 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         'relache' => isset($_POST['relache']),
         'confirme' => !empty($_POST['confirme_regles']),
     ];
+    $alertes_bio = $id_espece ? array_filter(
+        controler_biologie($limites_bio, $id_espece, nombre_ou_null($_POST['taille'] ?? null, 0, 100000), nombre_ou_null($_POST['poids'] ?? null, 0, 100000)),
+        fn($a) => $a['bloquant']
+    ) : [];
     if (!$id_espece || !$stmt->fetchColumn()) {
         $erreur = "L'espèce du poisson est obligatoire.";
-    } elseif (prises_non_conformes($regles, $ctx_regles, [$controle], $gardes_jour)) {
-        $erreur = "Ce poisson gardé ne respecte pas la réglementation affichée : relâche-le ou confirme l'alerte.";
+    } elseif ($alertes_bio || prises_non_conformes($regles, $ctx_regles, [$controle], $gardes_jour)) {
+        $erreur = $alertes_bio
+            ? implode(' ', array_column($alertes_bio, 'texte'))
+            : "Ce poisson gardé ne respecte pas la réglementation affichée : relâche-le ou confirme l'alerte.";
         // On réaffiche le formulaire avec la saisie en cours
         $prise_data = array_merge($prise_data, [
             'ID_ESPECE' => $id_espece, 'TAILLE_CM' => $_POST['taille'] ?? null, 'POIDS_KG' => $_POST['poids'] ?? null,
@@ -168,17 +176,18 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
         $refusees = 0;
         $stmtPhoto = $pdo->prepare("INSERT INTO photo_prise (ID_PRISE, CHEMIN, ORDRE) VALUES (?, ?, ?)");
-        foreach (isset($_FILES['photos']) ? fichiers_multiples($_FILES['photos']) : [] as $fichier) {
+        foreach (isset($_FILES['photos']) ? fichiers_multiples($_FILES['photos']) : [] as $i => $fichier) {
             if ($fichier['error'] === UPLOAD_ERR_NO_FILE) continue;
             if ($restantes >= PHOTOS_MAX_PAR_PRISE) { $refusees++; continue; }
             $resultat = enregistrer_image_uploadee($fichier, $id_user);
             if (!$resultat) { $refusees++; continue; }
 
             $stmtPhoto->execute([$id_prise, $resultat['chemin'], $restantes++]);
-            $exif = $resultat['exif'];
-            if (is_array($exif) && isset($exif['GPSLatitude'], $exif['GPSLongitude'])) {
-                $lat = getGps($exif['GPSLatitude'], $exif['GPSLatitudeRef'] ?? 'N');
-                $lng = getGps($exif['GPSLongitude'], $exif['GPSLongitudeRef'] ?? 'E');
+            // GPS : EXIF lus par PHP, lecture de secours, puis ce que le navigateur a lu avant de réduire la photo
+            $meta = meta_photo($fichier['tmp_name'], $resultat['exif'], meta_client($_POST['photos_meta'] ?? null, $i));
+            if ($meta['lat'] !== null && ($lat === null || $meta['source_gps'] !== 'appareil')) {
+                $lat = $meta['lat'];
+                $lng = $meta['lng'];
             }
         }
 
@@ -203,6 +212,8 @@ $especes = $pdo->query("SELECT ID_ESPECE, NOM_COM, ICONE_CHEMIN FROM espece ORDE
 foreach ($especes as &$esp) $esp['ICONE_CHEMIN'] = icone_legere($esp['ICONE_CHEMIN']);
 unset($esp);
 $techniques = $pdo->query("SELECT ID_TECHNIQUE, NOM_TECHNIQUE FROM technique ORDER BY NOM_TECHNIQUE")->fetchAll(PDO::FETCH_ASSOC);
+$especes_par_id = array_column($especes, null, 'ID_ESPECE');
+$favorites = array_values(array_filter(array_map(fn($id) => $especes_par_id[$id] ?? null, especes_favorites($pdo, $id_user))));
 
 // Récupération globale pour la boîte de pêche
 $types_leurre = $pdo->query("SELECT * FROM type_leurre")->fetchAll(PDO::FETCH_NUM); 
@@ -309,11 +320,13 @@ $heure_affichee = !empty($prise_data['DATE_HEURE']) ? date('H:i', strtotime($pri
                     <p class="small text-muted">Coche les photos à retirer, ou ajoutes-en d'autres ci-dessous.</p>
                 <?php endif; ?>
 
-                <label for="photo_upload" class="btn btn-light p-4 rounded-4 w-100 border-2 border-primary border-dashed d-flex flex-column align-items-center" style="border-style: dashed;">
+                <label for="photo_proxy" class="btn btn-light p-4 rounded-4 w-100 border-2 border-primary border-dashed d-flex flex-column align-items-center" style="border-style: dashed;">
                     <span class="material-symbols-rounded text-primary mb-2" style="font-size: 32px;">add_a_photo</span>
                     <span class="fw-semibold text-primary">Ajouter des photos</span>
-                    <input type="file" id="photo_upload" name="photos[]" multiple accept="image/jpeg,image/png,image/webp" class="d-none" onchange="previewImages(this)">
+                    <input type="file" id="photo_proxy" multiple accept="image/jpeg,image/png,image/webp" class="d-none">
                 </label>
+                <input type="file" id="photo_upload" name="photos[]" multiple accept="image/jpeg,image/png,image/webp" class="d-none">
+                <input type="hidden" name="photos_meta" id="photos-meta" value="[]">
                 <div id="image_preview" class="d-flex flex-wrap gap-2 justify-content-center mt-3"></div>
             </div>
 
@@ -324,6 +337,15 @@ $heure_affichee = !empty($prise_data['DATE_HEURE']) ? date('H:i', strtotime($pri
                 <!-- MENU DE RECHERCHE DYNAMIQUE (AVEC ICÔNES) -->
                 <div class="mb-4 dropdown custom-select-espece w-100">
                     <label class="form-label text-secondary small fw-bold text-uppercase tracking-wider">Espèce <span class="text-danger">*</span></label>
+                    <?php if ($favorites): ?>
+                        <div class="chips-especes mb-2" aria-label="Accès rapide à tes espèces les plus pêchées">
+                            <?php foreach (array_slice($favorites, 0, 5) as $f): ?>
+                                <button type="button" class="chip-espece<?= (string) ($prise_data['ID_ESPECE'] ?? '') === (string) $f['ID_ESPECE'] ? ' actif' : '' ?>" data-value="<?= (int) $f['ID_ESPECE'] ?>">
+                                    <?php if ($f['ICONE_CHEMIN']): ?><img src="<?= e($f['ICONE_CHEMIN']) ?>" alt="" loading="lazy"><?php endif; ?><?= e($f['NOM_COM']) ?>
+                                </button>
+                            <?php endforeach; ?>
+                        </div>
+                    <?php endif; ?>
                     <button class="btn bg-light border-0 w-100 d-flex justify-content-between align-items-center text-start p-3 rounded-4 dropdown-toggle species-btn" type="button" data-bs-toggle="dropdown" aria-expanded="false">
                         <span class="selected-espece-text text-dark d-flex align-items-center fw-medium">
                             <?php if(!empty($selected_espece_icon)): ?>
@@ -336,11 +358,23 @@ $heure_affichee = !empty($prise_data['DATE_HEURE']) ? date('H:i', strtotime($pri
                         <div class="px-2 pb-2">
                             <input type="text" class="form-control bg-light border-0 shadow-none search-espece" placeholder="Taper un nom...">
                         </div>
-                        <div class="espece-list" style="max-height: 250px; overflow-y: auto;">
+                        <div class="espece-list" style="max-height: 280px; overflow-y: auto;">
+                            <?php if ($favorites): ?>
+                                <div class="espece-favorites">
+                                    <div class="dropdown-header px-2">Tes espèces les plus pêchées</div>
+                                    <?php foreach ($favorites as $e): ?>
+                                        <a class="dropdown-item d-flex align-items-center espece-option rounded-3 py-2 mb-1" href="#" data-value="<?= (int) $e['ID_ESPECE'] ?>" data-nom="<?= e($e['NOM_COM']) ?>">
+                                            <?php if ($e['ICONE_CHEMIN']): ?><img src="<?= e($e['ICONE_CHEMIN']) ?>" alt="" loading="lazy" style="width:35px; height:35px; object-fit:contain;" class="me-3"><?php else: ?><span class="material-symbols-rounded text-muted me-3" style="font-size:35px;">set_meal</span><?php endif; ?>
+                                            <span class="fw-medium text-dark"><?= e($e['NOM_COM']) ?></span>
+                                        </a>
+                                    <?php endforeach; ?>
+                                    <div class="dropdown-header px-2">Toutes les espèces</div>
+                                </div>
+                            <?php endif; ?>
                             <?php foreach($especes as $e): ?>
                                 <a class="dropdown-item d-flex align-items-center espece-option rounded-3 py-2 mb-1" href="#" data-value="<?= (int) $e['ID_ESPECE'] ?>" data-nom="<?= e($e['NOM_COM']) ?>">
                                     <?php if($e['ICONE_CHEMIN']): ?>
-                                        <img src="<?= e($e['ICONE_CHEMIN']) ?>" alt="" style="width:35px; height:35px; object-fit:contain;" class="me-3">
+                                        <img src="<?= e($e['ICONE_CHEMIN']) ?>" alt="" loading="lazy" style="width:35px; height:35px; object-fit:contain;" class="me-3">
                                     <?php else: ?>
                                         <span class="material-symbols-rounded text-muted me-3" style="font-size:35px;">set_meal</span>
                                     <?php endif; ?>
@@ -366,6 +400,7 @@ $heure_affichee = !empty($prise_data['DATE_HEURE']) ? date('H:i', strtotime($pri
                         <input type="number" step="0.01" min="0" max="999.99" inputmode="decimal" class="form-control bg-light border-0 p-3 rounded-4" name="poids" placeholder="0.00" value="<?= e($prise_data['POIDS_KG'] ?? '') ?>">
                     </div>
                 </div>
+                <div id="bio-alertes" class="bio-alertes" aria-live="polite"></div>
             </div>
 
             <!-- MATÉRIEL : BOÎTE DE PÊCHE -->
@@ -422,22 +457,58 @@ $heure_affichee = !empty($prise_data['DATE_HEURE']) ? date('H:i', strtotime($pri
     <?php include './includes/modal_boite_peche.php'; ?>
 
     <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/js/bootstrap.bundle.min.js"></script>
-    
+    <script src="script/exif.js?v=4"></script>
+    <script src="script/photos.js?v=4"></script>
     <script>
 
-        // 1. PRÉVISUALISATION DES IMAGES
-        function previewImages(input) {
-            const preview = document.getElementById('image_preview');
-            preview.innerHTML = '';
-            Array.from(input.files || []).forEach(file => {
-                const img = document.createElement('img');
-                img.src = URL.createObjectURL(file);
-                img.alt = 'Aperçu';
-                img.className = 'rounded-3 shadow-sm border';
-                img.style.cssText = 'width: 110px; height: 110px; object-fit: cover;';
-                preview.appendChild(img);
+        // 1. PHOTOS : EXIF lus sur l'original, photo réduite dans le navigateur, retrait possible avant envoi
+        (function () {
+            const proxy = document.getElementById('photo_proxy');
+            const reel = document.getElementById('photo_upload');
+            const metaInput = document.getElementById('photos-meta');
+            const apercu = document.getElementById('image_preview');
+            const choisies = new Map();
+            const enCours = new Set();
+            let compteur = 0;
+            function synchroniser() {
+                const dt = new DataTransfer(), metas = [];
+                choisies.forEach(p => { if (p.fichier) { dt.items.add(p.fichier); metas.push(p.meta); } });
+                reel.files = dt.files;
+                metaInput.value = JSON.stringify(metas);
+            }
+            proxy.addEventListener('change', () => {
+                Array.from(proxy.files || []).forEach(f => {
+                    const id = ++compteur;
+                    choisies.set(id, {});
+                    enCours.add(id);
+                    const div = document.createElement('div');
+                    div.className = 'position-relative vignette-envoi';
+                    div.innerHTML = '<img alt="Aperçu" class="rounded-3 shadow-sm border" style="width:110px;height:110px;object-fit:cover;"><span class="vignette-etat"><span class="spinner-border spinner-border-sm" aria-hidden="true"></span></span>'
+                        + '<button type="button" class="btn btn-danger btn-sm position-absolute top-0 start-100 translate-middle rounded-circle p-0 d-flex align-items-center justify-content-center shadow" style="width:24px;height:24px" aria-label="Retirer cette photo"><span class="material-symbols-rounded" style="font-size:14px">close</span></button>';
+                    const img = div.querySelector('img');
+                    img.src = URL.createObjectURL(f);
+                    div.querySelector('button').addEventListener('click', () => { choisies.delete(id); enCours.delete(id); URL.revokeObjectURL(img.src); div.remove(); synchroniser(); });
+                    apercu.appendChild(div);
+                    Photos.preparer(f).then(p => {
+                        if (!choisies.has(id)) return;
+                        choisies.set(id, p);
+                        enCours.delete(id);
+                        const lab = Photos.etiquette(p.meta), etat = div.querySelector('.vignette-etat');
+                        etat.className = 'vignette-etat ' + (lab.ok ? 'ok' : 'ko');
+                        etat.title = lab.texte;
+                        etat.innerHTML = `<span class="material-symbols-rounded" aria-hidden="true">${lab.icone}</span><span class="visually-hidden">${lab.texte}</span>`;
+                        synchroniser();
+                    });
+                });
+                proxy.value = '';
             });
-        }
+            document.getElementById('main-form').addEventListener('submit', e => {
+                if (enCours.size) { // EXIF et réduction pas encore terminés
+                    e.preventDefault();
+                    const t = setInterval(() => { if (!enCours.size) { clearInterval(t); synchroniser(); document.getElementById('main-form').requestSubmit(); } }, 150);
+                }
+            }, true);
+        })();
 
         // 2. GESTION DE LA BOÎTE DE PÊCHE (AJOUT ET RENDU)
         let leurres = <?= js($liste_leurres) ?>;
@@ -446,18 +517,27 @@ $heure_affichee = !empty($prise_data['DATE_HEURE']) ? date('H:i', strtotime($pri
         const typesAppat = <?= js($types_appat) ?>;
 
     </script>
-    <script src="script/gestion_prise.js"></script>
-    <script>const GARDE_FOU = <?= js(donnees_garde_fou($ctx_regles, $regles, $gardes_jour)) ?>;</script>
+    <script src="script/gestion_prise.js?v=4"></script>
+    <script>
+        const GARDE_FOU = <?= js(donnees_garde_fou($ctx_regles, $regles, $gardes_jour)) ?>;
+        const LIMITES_BIO = <?= js((object) limites_biologiques_js($pdo)) ?>;
+        const NOMS_ESPECES = <?= js((object) array_column($especes, 'NOM_COM', 'ID_ESPECE')) ?>;
+    </script>
     <script src="script/reglementation.js"></script>
+    <script src="script/biologie.js?v=4"></script>
     <script>
         // Garde-fou réglementaire : alerte immédiate à chaque modification de la prise
         (function () {
             const form = document.getElementById('main-form');
             const zone = document.getElementById('regle-alertes');
             const relache = document.getElementById('relache');
+            const zoneBio = document.getElementById('bio-alertes');
+            let bioBloque = false;
             function verifier() {
                 const espece = parseInt(form.querySelector('.hidden-espece-input').value, 10);
-                if (!espece) { zone.innerHTML = ''; return []; }
+                document.querySelectorAll('.chip-espece').forEach(c => c.classList.toggle('actif', c.dataset.value === String(espece)));
+                bioBloque = !!espece && GardeBio.afficher(zoneBio, GardeBio.controler(LIMITES_BIO, espece, NOMS_ESPECES[espece], form.taille.value, form.poids.value), form.taille, form.poids);
+                if (!espece) { zone.innerHTML = ''; GardeBio.afficher(zoneBio, [], form.taille, form.poids); return []; }
                 const confirme = !!zone.querySelector('input[type="checkbox"]:checked') || <?= !empty($_POST['confirme_regles']) ? 'true' : 'false' ?>;
                 const alertes = Reglementation.controler(GARDE_FOU.regles, GARDE_FOU.contexte, {
                     espece, taille: form.taille.value, quantite: form.quantite.value, relache: relache.checked,
@@ -468,8 +548,19 @@ $heure_affichee = !empty($prise_data['DATE_HEURE']) ? date('H:i', strtotime($pri
             form.addEventListener('input', verifier);
             form.addEventListener('change', verifier);
             form.querySelectorAll('.espece-option').forEach(o => o.addEventListener('click', () => setTimeout(verifier, 0)));
+            document.querySelectorAll('.chip-espece').forEach(chip => chip.addEventListener('click', () => {
+                const option = form.querySelector(`.espece-list > .espece-option[data-value="${chip.dataset.value}"]`);
+                if (option) option.click();
+                setTimeout(verifier, 0);
+            }));
             form.addEventListener('submit', e => {
                 const bloquantes = verifier().filter(a => a.bloquant);
+                if (bioBloque) {
+                    e.preventDefault();
+                    zoneBio.scrollIntoView({ behavior: 'smooth', block: 'center' });
+                    if (navigator.vibrate) navigator.vibrate(200);
+                    return;
+                }
                 if (bloquantes.length && !zone.querySelector('input[type="checkbox"]:checked')) {
                     e.preventDefault();
                     zone.scrollIntoView({ behavior: 'smooth', block: 'center' });

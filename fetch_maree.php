@@ -26,6 +26,32 @@ if (!empty($_GET['date'])) {
     $date = $_GET['date'];
 }
 
+// Prévisions sur plusieurs jours (?jours=7) : un seul appel à l'API pour les jours pas encore en cache
+$nb_jours = id_ou_null($_GET['jours'] ?? null);
+if ($nb_jours !== null) {
+    try {
+        $debut = date('Y-m-d');
+        $m = maree_jours(db(), $lat_user, $lng_user, $debut, min(7, $nb_jours));
+        $jours = [];
+        for ($i = 0; $i < min(7, $nb_jours); $i++) {
+            $d = date('Y-m-d', strtotime("$debut +$i day"));
+            $infos = isset($m['jours'][$d]) ? maree_extrema($m['jours'][$d]) : null;
+            $jours[] = [
+                'date' => $d,
+                'disponible' => isset($m['jours'][$d]),
+                'coef' => $infos['coef'] ?? null,
+                'extrema' => isset($m['jours'][$d]) ? maree_liste_extrema($m['jours'][$d]) : [],
+            ];
+        }
+        json_out(['port_name_custom' => $m['port'], 'distance_km' => $m['distance_km'], 'jours' => $jours]);
+    } catch (RuntimeException $e) {
+        json_out(['error' => $e->getMessage()], 502);
+    } catch (Throwable $e) {
+        error_log('[MonPtitCarnet] fetch_maree (semaine) : ' . $e->getMessage());
+        json_out(['error' => "Erreur serveur lors du calcul des marées."], 500);
+    }
+}
+
 try {
     $maree = maree_du_jour(db(), $lat_user, $lng_user, $date);
     $result = $maree['donnees'];

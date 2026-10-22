@@ -300,3 +300,345 @@ html[data-theme="soleil"] .action-collante { background: #fff; border-top: 2px s
 
 /* Profil : bannière par défaut (sans photo) aux couleurs du thème */
 body .profile-banner-responsive:not([style]) { background: var(--encre); }
+
+/* =========================================================================
+   V0.4 — saisie des prises
+   ========================================================================= */
+/* Accès rapide aux espèces les plus pêchées */
+.chips-especes { display: flex; gap: 8px; overflow-x: auto; padding-bottom: 4px; scrollbar-width: none; }
+.chips-especes::-webkit-scrollbar { display: none; }
+.chip-espece {
+    flex: 0 0 auto; display: inline-flex; align-items: center; gap: 6px;
+    min-height: 44px; padding: 6px 14px 6px 8px; border-radius: 999px;
+    border: 1.5px solid var(--trait); background: var(--papier); color: var(--encre);
+    font-weight: 700; font-size: .92rem; white-space: nowrap;
+}
+.chip-espece img { width: 30px; height: 30px; object-fit: contain; background: transparent !important; }
+.chip-espece.actif { border-color: var(--ardoise); background: var(--ardoise); color: #fff; }
+.chip-espece:active { transform: scale(.97); }
+.espece-favorites .dropdown-header { font-weight: 700; color: var(--texte-doux); padding-top: 8px; }
+
+/* Photos d'une prise : vignettes, ajout direct sur la carte, envoi en cours */
+.photo-strip { align-items: center; }
+.photo-item { flex: 0 0 auto; }
+.photo-retirer {
+    position: absolute; top: -8px; right: -8px; width: 28px; height: 28px; border-radius: 50%;
+    border: 2px solid #fff; background: var(--encre); color: #fff;
+    display: grid; place-items: center; padding: 0;
+}
+.photo-retirer .material-symbols-rounded { font-size: 16px; }
+.photo-ajout, .photo-envoi {
+    flex: 0 0 auto; width: 96px; height: 96px; border-radius: 12px;
+    display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 2px;
+}
+.photo-ajout {
+    border: 2px dashed var(--ardoise); color: var(--ardoise); background: var(--ardoise-clair);
+    cursor: pointer; font-weight: 700; font-size: .82rem; margin: 0;
+}
+.photo-ajout .material-symbols-rounded { font-size: 30px; }
+.photo-ajout:active { transform: scale(.97); }
+.photo-envoi { background: #f4f8f8; border: 1.5px solid var(--trait); color: var(--ardoise); }
+
+/* État GPS des photos choisies */
+.vignette-envoi { display: inline-block; }
+.vignette-etat {
+    position: absolute; left: 4px; bottom: 4px; min-width: 26px; height: 26px; padding: 0 4px;
+    border-radius: 13px; display: grid; place-items: center;
+    background: rgba(14, 42, 51, .85); color: #fff;
+}
+.vignette-etat .material-symbols-rounded { font-size: 16px; }
+.vignette-etat.ok { background: var(--mousse); }
+.vignette-etat.ko { background: var(--ambre); }
+.note-gps {
+    display: flex; gap: 8px; align-items: flex-start;
+    padding: 10px 12px; border-radius: var(--rayon-petit);
+    background: var(--ambre-fond); color: var(--ambre); border: 1.5px solid #e7b766;
+}
+.note-gps[hidden] { display: none; }
+.note-gps .material-symbols-rounded { font-size: 20px; flex-shrink: 0; }
+
+/* Garde-fou biologique */
+.bio-alertes:empty { display: none; }
+.bio-alerte {
+    display: flex; gap: 10px; align-items: flex-start;
+    padding: 10px 12px; margin-bottom: 8px; border-radius: var(--rayon-petit);
+    font-size: .95rem; line-height: 1.35; font-weight: 700;
+}
+.bio-alerte .material-symbols-rounded { font-size: 22px; flex-shrink: 0; }
+.bio-danger { background: var(--signal); color: #fff; }
+.bio-warning { background: var(--ambre-fond); color: var(--ambre); border: 1.5px solid #e7b766; }
+.catch-card-bio { border: 2px solid var(--signal) !important; }
+.form-control.is-invalid { border: 2px solid var(--signal) !important; background-image: none; }
+
+/* =========================================================================
+   V0.4 — profil, sessions visibles / masquées, visionneuse
+   ========================================================================= */
+.titre-section {
+    display: flex; align-items: center; gap: 6px;
+    font-size: 1rem; font-weight: 700; color: var(--texte-doux); margin: 8px 0 12px;
+}
+.titre-section .material-symbols-rounded { font-size: 20px; color: var(--bouee); }
+.etiquette-niveau {
+    display: inline-block; margin-right: 6px; padding: 1px 10px; border-radius: 999px;
+    background: var(--encre); color: #fff; font-weight: 700; font-size: .8rem;
+}
+.profil-bio {
+    max-width: 560px; padding: 12px 16px; border-left: 4px solid var(--bouee);
+    background: var(--papier); border-radius: 0 var(--rayon-petit) var(--rayon-petit) 0;
+    text-align: left; color: var(--encre);
+}
+.profil-chiffres {
+    list-style: none; padding: 0; margin: 0 0 16px;
+    display: grid; grid-template-columns: repeat(4, 1fr); gap: 6px;
+}
+.profil-chiffres li {
+    background: var(--papier); border-radius: var(--rayon-petit); padding: 10px 4px; text-align: center;
+    border: 1px solid var(--trait);
+}
+.profil-chiffres strong { display: block; font-size: 1.35rem; line-height: 1.1; }
+.profil-chiffres span { font-size: .75rem; color: var(--texte-doux); }
+.fiche-pecheur dl { display: grid; grid-template-columns: 1fr 1fr; gap: 12px 16px; }
+.fiche-pecheur dl > div { min-width: 0; }
+.fiche-pecheur .fiche-large { grid-column: 1 / -1; }
+.fiche-pecheur dt { display: flex; align-items: center; gap: 6px; font-size: .78rem; font-weight: 700; color: var(--texte-doux); }
+.fiche-pecheur dt .material-symbols-rounded { font-size: 18px; color: var(--ardoise); }
+.fiche-pecheur dd { margin: 2px 0 0; font-weight: 700; }
+.liste-etiquettes { display: flex; flex-wrap: wrap; gap: 6px; }
+.liste-etiquettes span { padding: 3px 10px; border-radius: 999px; background: var(--ardoise-clair); font-size: .85rem; font-weight: 700; }
+.bandeau-apercu, .bandeau-visibilite {
+    display: flex; flex-wrap: wrap; align-items: center; gap: 8px;
+    padding: 10px 14px; border-radius: var(--rayon-petit); background: var(--ardoise-clair);
+}
+.bandeau-visibilite { display: block; }
+
+/* Grille de sessions : 2 cartes côte à côte sur téléphone */
+.carte-session {
+    position: relative; height: 100%; background: var(--papier); border-radius: var(--rayon);
+    overflow: hidden; border: 1px solid var(--trait); display: flex; flex-direction: column;
+}
+.carte-session-lien { color: inherit; text-decoration: none; display: flex; flex-direction: column; flex: 1; }
+.carte-session-image { position: relative; aspect-ratio: 4 / 3; background: #e9efef; display: grid; place-items: center; }
+.carte-session-image img { width: 100%; height: 100%; object-fit: cover; }
+.carte-session-image > .material-symbols-rounded { font-size: 40px; color: var(--texte-doux); }
+.carte-session-date {
+    position: absolute; left: 8px; bottom: 8px; padding: 2px 8px; border-radius: 999px;
+    background: rgba(14, 42, 51, .85); color: #fff; font-size: .78rem; font-weight: 700;
+}
+.carte-session-corps { padding: 8px 10px 10px; display: flex; flex-direction: column; gap: 1px; min-width: 0; }
+.carte-session-corps strong { font-size: .95rem; line-height: 1.2; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.carte-session-corps small { color: var(--texte-doux); font-size: .8rem; }
+.carte-session-lieu { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.carte-session-epingle {
+    position: absolute; top: 8px; left: 8px; width: 30px; height: 30px; border-radius: 50%;
+    background: #ffd54a; color: var(--encre); display: grid; place-items: center;
+}
+.carte-session-epingle .material-symbols-rounded { font-size: 18px; }
+.carte-session-photos {
+    position: absolute; top: 8px; right: 8px; min-height: 34px; padding: 0 10px; border: 0; border-radius: 999px;
+    display: inline-flex; align-items: center; gap: 4px; background: rgba(14, 42, 51, .85); color: #fff; font-weight: 700; font-size: .85rem;
+}
+.carte-session-photos .material-symbols-rounded { font-size: 18px; }
+.carte-session-visibilite { margin: 0; border-top: 1px solid var(--trait); }
+.carte-session-visibilite button {
+    width: 100%; min-height: 44px; border: 0; background: transparent; color: var(--ardoise);
+    display: flex; align-items: center; justify-content: center; gap: 6px; font-weight: 700; font-size: .88rem;
+}
+.carte-session-visibilite button.masquee { color: var(--texte-doux); background: #eef1f2; }
+.carte-session.est-masquee .carte-session-image img { filter: grayscale(.85); opacity: .7; }
+.carte-record {
+    width: 100%; display: flex; align-items: center; gap: 12px; padding: 10px 12px; text-align: left;
+    background: var(--papier); border: 1px solid var(--trait); border-radius: var(--rayon); color: inherit;
+}
+.carte-record-icone { width: 64px; height: 64px; flex: 0 0 64px; border-radius: 12px; overflow: hidden; background: #f4f8f8; display: grid; place-items: center; }
+.carte-record-icone img { max-width: 100%; max-height: 100%; object-fit: contain; }
+.carte-record-icone img.photo { width: 100%; height: 100%; object-fit: cover; }
+.carte-record-valeur { color: var(--bouee); font-weight: 700; }
+
+/* Photos cliquables d'une prise */
+.photo-prise-bouton { display: block; position: relative; width: 100%; padding: 0; border: 0; background: none; cursor: zoom-in; }
+.photo-prise-bouton img { display: block; }
+.badge-photos {
+    position: absolute; right: 8px; bottom: 8px; padding: 3px 10px; border-radius: 999px;
+    display: inline-flex; align-items: center; gap: 4px; background: rgba(14, 42, 51, .85); color: #fff; font-weight: 700; font-size: .85rem;
+}
+.badge-photos .material-symbols-rounded { font-size: 18px; }
+
+/* Visionneuse plein écran */
+html.visionneuse-ouverte, html.visionneuse-ouverte body { overflow: hidden; }
+.visionneuse {
+    position: fixed; inset: 0; z-index: 2000; background: rgba(4, 14, 18, .96);
+    display: flex; align-items: center; justify-content: center; touch-action: pan-y;
+}
+.visionneuse[hidden] { display: none; }
+.visionneuse-cadre { margin: 0; width: 100%; height: 100%; display: flex; flex-direction: column; align-items: center; justify-content: center; padding: 56px 8px 16px; }
+.visionneuse-cadre img { max-width: 100%; max-height: calc(100% - 48px); object-fit: contain; border-radius: 6px; user-select: none; -webkit-user-drag: none; }
+.visionneuse-legende { display: flex; gap: 12px; align-items: baseline; color: #fff; padding: 12px 8px 0; font-weight: 700; }
+.visionneuse-legende .compteur { color: #b9c9ce; font-weight: 400; }
+.visionneuse-fermer, .visionneuse-nav {
+    position: absolute; z-index: 1; width: 52px; height: 52px; border-radius: 50%; border: 0;
+    background: rgba(255, 255, 255, .14); color: #fff; display: grid; place-items: center;
+}
+.visionneuse-fermer { top: calc(10px + env(safe-area-inset-top, 0px)); right: 10px; }
+.visionneuse-nav { top: 50%; transform: translateY(-50%); }
+.visionneuse-nav.precedente { left: 8px; }
+.visionneuse-nav.suivante { right: 8px; }
+.visionneuse-nav[hidden] { display: none; }
+.visionneuse .material-symbols-rounded { font-size: 30px; }
+
+/* Choix multiples (profil) */
+.liste-choix { display: flex; flex-wrap: wrap; gap: 8px; }
+.choix-etiquette { margin: 0; cursor: pointer; }
+.choix-etiquette input { position: absolute; opacity: 0; width: 1px; height: 1px; }
+.choix-etiquette span {
+    display: inline-flex; align-items: center; min-height: 40px; padding: 4px 14px; border-radius: 999px;
+    border: 1.5px solid var(--trait); background: var(--papier); font-weight: 700; font-size: .9rem;
+}
+.choix-etiquette input:checked + span { background: var(--ardoise); border-color: var(--ardoise); color: #fff; }
+.choix-etiquette input:focus-visible + span { outline: 3px solid var(--bouee); outline-offset: 2px; }
+.choix-etiquette.desactive span { opacity: .45; }
+@media (max-width: 380px) { .profil-chiffres strong { font-size: 1.15rem; } }
+
+/* =========================================================================
+   V0.4 — fil d'actualité et classements
+   ========================================================================= */
+.min-w-0 { min-width: 0; }
+.fil { display: flex; flex-direction: column; gap: 14px; }
+.fil-carte { background: var(--papier); border-radius: var(--rayon); border: 1px solid var(--trait); overflow: hidden; }
+.fil-entete { padding: 10px 12px; }
+.fil-auteur { display: flex; align-items: center; gap: 10px; color: inherit; text-decoration: none; min-width: 0; }
+.fil-auteur > span:last-child { display: flex; flex-direction: column; min-width: 0; }
+.fil-auteur strong { line-height: 1.2; }
+.fil-auteur small { color: var(--texte-doux); font-size: .82rem; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.fil-avatar {
+    width: 40px; height: 40px; flex: 0 0 40px; border-radius: 50%; object-fit: cover;
+    background: var(--ardoise-clair); display: grid; place-items: center; color: var(--ardoise);
+}
+.fil-photo { display: block; position: relative; width: 100%; padding: 0; border: 0; background: #e9efef; cursor: zoom-in; }
+.fil-photo img { display: block; width: 100%; aspect-ratio: 4 / 3; object-fit: cover; }
+.fil-pied { display: flex; align-items: center; gap: 10px; padding: 10px 12px 12px; }
+.fil-icone { width: 40px; height: 40px; object-fit: contain; background: transparent !important; flex: 0 0 40px; }
+.fil-espece { display: block; font-size: 1.05rem; line-height: 1.2; }
+.fil-qte { color: var(--bouee); }
+.fil-mesures { display: flex; gap: 10px; color: var(--ardoise); font-weight: 700; font-size: .95rem; }
+.fil-nokill { padding: 3px 10px; border-radius: 999px; background: #e3f1e9; color: var(--mousse); font-weight: 700; font-size: .82rem; flex-shrink: 0; }
+.lien-classements {
+    display: flex; align-items: center; gap: 12px; padding: 12px 14px; border-radius: var(--rayon);
+    background: var(--papier); border: 1.5px solid var(--trait); color: var(--encre); text-decoration: none;
+}
+.lien-classements > .material-symbols-rounded:first-child { font-size: 32px; color: var(--bouee); }
+.lien-classements small { color: var(--texte-doux); }
+
+/* Sélecteur de vue en liens (classements) */
+.selecteur-vue a {
+    flex: 1; min-height: 46px; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 0;
+    border-radius: 999px; color: #d9e6e8; font-weight: 700; font-size: .78rem; text-decoration: none; line-height: 1.1;
+}
+.selecteur-vue a .material-symbols-rounded { font-size: 20px; }
+.selecteur-vue a[aria-current] { background: #fff; color: var(--encre); }
+
+.mois-navigation { display: grid; grid-template-columns: 48px 1fr 48px; align-items: center; text-align: center; }
+.mois-navigation a { width: 48px; height: 48px; border-radius: 50%; display: grid; place-items: center; background: var(--papier); color: var(--encre); border: 1px solid var(--trait); }
+.mois-navigation strong { font-size: 1.15rem; }
+.mois-navigation small { font-weight: 400; color: var(--texte-doux); }
+.especes-mois { display: flex; gap: 8px; overflow-x: auto; padding-bottom: 6px; margin-bottom: 12px; scrollbar-width: thin; }
+.espece-mois {
+    flex: 0 0 auto; display: flex; align-items: center; gap: 8px; min-height: 56px; padding: 6px 14px 6px 8px;
+    border-radius: var(--rayon); background: var(--papier); border: 1.5px solid var(--trait); color: var(--encre); text-decoration: none;
+}
+.espece-mois img { width: 38px; height: 38px; object-fit: contain; background: transparent !important; }
+.espece-mois span { display: flex; flex-direction: column; line-height: 1.2; }
+.espece-mois small { color: var(--texte-doux); font-size: .78rem; white-space: nowrap; }
+.espece-mois.actif { border-color: var(--encre); background: var(--encre); color: #fff; }
+.espece-mois.actif small { color: #cfe0e3; }
+.classement { list-style: none; padding: 0; margin: 0; }
+.classement li { display: flex; align-items: center; gap: 10px; min-height: 58px; padding: 6px 0; border-top: 1px solid var(--trait); }
+.classement li:first-child { border-top: 0; }
+.classement li.separee { border-top: 2px dashed var(--trait); margin-top: 4px; }
+.classement li.moi { background: var(--ardoise-clair); margin: 0 -10px; padding-left: 10px; padding-right: 10px; border-radius: var(--rayon-petit); }
+.classement-rang {
+    width: 36px; height: 36px; flex: 0 0 36px; border-radius: 50%; display: grid; place-items: center;
+    font-weight: 700; font-size: 1.05rem; color: var(--texte-doux);
+}
+.rang-1 .classement-rang { background: var(--bouee); color: #fff; font-size: 1.2rem; }
+.rang-2 .classement-rang, .rang-3 .classement-rang { border: 2px solid var(--ardoise); color: var(--ardoise); }
+.classement-pecheur { flex: 1; display: flex; align-items: center; gap: 10px; color: inherit; text-decoration: none; min-width: 0; }
+.classement-pecheur img, .classement-avatar { width: 38px; height: 38px; flex: 0 0 38px; border-radius: 50%; object-fit: cover; background: var(--ardoise-clair); display: grid; place-items: center; color: var(--ardoise); }
+.classement-pecheur > span { display: flex; flex-direction: column; min-width: 0; }
+.classement-pecheur strong { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.classement-pecheur small { color: var(--texte-doux); font-size: .8rem; }
+.classement-valeur { font-weight: 700; white-space: nowrap; text-align: right; }
+.rang-1 .classement-valeur { color: var(--bouee); }
+.classement-vide { color: var(--texte-doux); margin: 0; padding: 8px 0; }
+
+/* =========================================================================
+   V0.4 — statistiques par espèce
+   ========================================================================= */
+.ligne-espece {
+    width: 100%; display: flex; align-items: center; justify-content: space-between; gap: 10px;
+    padding: 12px 14px; border: 0; background: transparent; color: inherit; min-height: 64px;
+}
+.ligne-espece:hover { background: #f4f8f8; }
+.resume-heures { font-size: .98rem; }
+.resume-heures strong { color: var(--bouee); }
+.grille-tuiles { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+.tuile-stat { background: #f4f8f8; border-radius: var(--rayon-petit); padding: 10px 12px; display: flex; flex-direction: column; }
+.tuile-titre { font-size: .78rem; font-weight: 700; color: var(--texte-doux); }
+.tuile-stat strong { font-size: 1.3rem; line-height: 1.2; }
+.tuile-stat small { color: var(--texte-doux); font-size: .78rem; }
+.record-espece {
+    display: flex; align-items: center; gap: 12px; margin-top: 10px; padding: 10px 12px;
+    border-radius: var(--rayon-petit); border: 2px solid #f2c94c; background: #fffbea;
+}
+.record-espece > .material-symbols-rounded { font-size: 30px; color: #b7791f; }
+.record-espece strong { display: block; font-size: 1.15rem; }
+.record-espece small { color: var(--texte-doux); }
+.liste-meilleurs { list-style: none; padding: 0; margin: 12px 0 0; }
+.liste-meilleurs li { display: grid; grid-template-columns: 1fr auto; gap: 0 10px; padding: 8px 0; border-top: 1px solid var(--trait); }
+.liste-meilleurs li span { font-size: .8rem; color: var(--texte-doux); grid-column: 1 / -1; }
+.liste-meilleurs li small { color: var(--texte-doux); align-self: end; }
+
+/* =========================================================================
+   V0.4 — marées sur 7 jours
+   ========================================================================= */
+.jours-maree { display: grid; grid-template-columns: repeat(7, 1fr); gap: 4px; }
+.jour-maree {
+    min-height: 64px; padding: 4px 0; border-radius: var(--rayon-petit); border: 1.5px solid var(--trait);
+    background: var(--papier); color: var(--encre); display: flex; flex-direction: column; align-items: center; justify-content: center; line-height: 1.1;
+}
+.jour-maree span { font-size: .72rem; color: var(--texte-doux); }
+.jour-maree strong { font-size: 1.1rem; }
+.jour-maree small { font-size: .62rem; color: var(--texte-doux); min-height: .8em; }
+.jour-maree.actif { background: var(--encre); border-color: var(--encre); color: #fff; }
+.jour-maree.actif span, .jour-maree.actif small { color: #cfe0e3; }
+.table-semaine-maree th, .table-semaine-maree td { padding: 10px 8px; vertical-align: middle; font-size: .9rem; }
+.table-semaine-maree tbody tr { cursor: pointer; }
+.table-semaine-maree tbody tr:focus-visible { outline: 3px solid var(--bouee); outline-offset: -3px; }
+.coef-badge { display: inline-block; min-width: 38px; padding: 2px 6px; border-radius: 999px; text-align: center; font-weight: 700; background: var(--ardoise-clair); }
+.coef-badge.fort { background: var(--bouee); color: #fff; }
+.coef-badge.faible { background: #eef1f2; color: var(--texte-doux); }
+
+/* =========================================================================
+   V0.4 — réglementation consultable par tous
+   ========================================================================= */
+.avertissement-regles { display: flex; gap: 10px; align-items: flex-start; padding: 12px 14px; border-radius: var(--rayon); background: var(--ambre-fond); color: var(--ambre); border: 1.5px solid #e7b766; font-size: .92rem; }
+.regles-du-jour { list-style: none; padding: 0; margin: 0; }
+.regles-du-jour li { display: flex; flex-direction: column; padding: 8px 0 8px 12px; border-left: 4px solid var(--mousse); margin-bottom: 6px; }
+.regles-du-jour li.fermee { border-left-color: var(--signal); }
+.regles-du-jour li span { font-size: .92rem; }
+.regle-espece-titre { display: flex; align-items: center; gap: 10px; font-size: 1.1rem; font-weight: 700; margin: 0 0 8px; }
+.regle-espece-titre img { width: 44px; height: 44px; object-fit: contain; background: transparent !important; }
+.regle-espece-titre > .material-symbols-rounded { font-size: 32px; color: var(--ardoise); }
+.regle-espece-titre small { font-weight: 400; font-style: italic; color: var(--texte-doux); font-size: .82rem; }
+.regle-carte { background: var(--papier); border: 1px solid var(--trait); border-radius: var(--rayon); padding: 12px 14px; margin-bottom: 8px; }
+.regle-zone { font-size: .8rem; font-weight: 700; color: var(--ardoise); margin: 0 0 6px; }
+.regle-details { list-style: none; padding: 0; margin: 0; }
+.regle-details li { display: flex; gap: 8px; padding: 4px 0; }
+.regle-details li > .material-symbols-rounded { font-size: 20px; color: var(--texte-doux); flex-shrink: 0; }
+.etat-regle { display: inline-block; margin-left: 4px; padding: 1px 8px; border-radius: 999px; font-size: .78rem; font-weight: 700; }
+.etat-regle.ouvert { background: #e3f1e9; color: var(--mousse); }
+.etat-regle.ferme { background: var(--signal); color: #fff; }
+.regle-note { font-size: .88rem; color: var(--texte-doux); margin: 6px 0 0; }
+.regle-source { font-size: .75rem; color: var(--texte-doux); margin: 6px 0 0; }
+.liste-reserves { list-style: none; padding: 0; margin: 0; }
+.lien-reserve { width: 100%; text-align: left; border: 0; background: var(--papier); border-radius: var(--rayon-petit); padding: 10px 12px; margin-bottom: 6px; display: flex; flex-direction: column; border-left: 4px solid var(--signal); }
+.lien-reserve small { color: var(--texte-doux); }

@@ -223,6 +223,7 @@ if ($carte && $carte['DATE_FIN_VALIDITE']) {
         function chargerScript(src) {
             return new Promise((ok, ko) => { const s = document.createElement('script'); s.src = src; s.onload = ok; s.onerror = ko; document.head.appendChild(s); });
         }
+        let canvasDetection = null; // rendu haute définition de la page, pour chercher le QR code
         async function dessinerPdf(fichier) {
             const pdfjs = await import(PDFJS + 'pdf.min.mjs');
             pdfjs.GlobalWorkerOptions.workerSrc = PDFJS + 'pdf.worker.min.mjs';
@@ -234,6 +235,13 @@ if ($carte && $carte['DATE_FIN_VALIDITE']) {
             const ctx = canvas.getContext('2d');
             ctx.fillStyle = '#fff'; ctx.fillRect(0, 0, canvas.width, canvas.height);
             await page.render({ canvasContext: ctx, viewport: vue }).promise;
+            // Page entière en plus haute définition : un petit QR code reste lisible
+            const vueHd = page.getViewport({ scale: Math.min(4, 2400 / base.width) });
+            canvasDetection = document.createElement('canvas');
+            canvasDetection.width = vueHd.width; canvasDetection.height = vueHd.height;
+            const ctxHd = canvasDetection.getContext('2d');
+            ctxHd.fillStyle = '#fff'; ctxHd.fillRect(0, 0, canvasDetection.width, canvasDetection.height);
+            await page.render({ canvasContext: ctxHd, viewport: vueHd }).promise;
             rognerMarges();
         }
         // Une carte occupe souvent le haut d'une page A4 : on retire les grandes marges blanches
@@ -264,23 +272,68 @@ if ($carte && $carte['DATE_FIN_VALIDITE']) {
             const echelle = Math.min(1, 1600 / bmp.width);
             canvas.width = bmp.width * echelle; canvas.height = bmp.height * echelle;
             canvas.getContext('2d').drawImage(bmp, 0, 0, canvas.width, canvas.height);
+            const echelleHd = Math.min(1, 2400 / Math.max(bmp.width, bmp.height));
+            canvasDetection = document.createElement('canvas');
+            canvasDetection.width = bmp.width * echelleHd; canvasDetection.height = bmp.height * echelleHd;
+            canvasDetection.getContext('2d').drawImage(bmp, 0, 0, canvasDetection.width, canvasDetection.height);
         }
-        async function lireQr() {
+
+        // ------------------------------------------------ Lecture du QR code, quelle que soit son orientation
+        // Le PDF de cartedepeche.fr place le QR code à l'envers : on essaie 0°, 180°, 90° et 270°,
+        // en miroir, puis zone par zone agrandie (un petit QR code au milieu du texte), jusqu'à le trouver.
+        async function decoderCanvas(c) {
             if ('BarcodeDetector' in window) {
                 try {
-                    const codes = await new BarcodeDetector({ formats: ['qr_code'] }).detect(canvas);
+                    const codes = await new BarcodeDetector({ formats: ['qr_code'] }).detect(c);
                     if (codes.length) return codes[0].rawValue;
                 } catch (e) {}
             }
             if (!window.jsQR) await chargerScript(JSQR);
-            const ctx = canvas.getContext('2d');
-            const img = ctx.getImageData(0, 0, canvas.width, canvas.height);
-            const resultat = window.jsQR(img.data, img.width, img.height, { inversionAttempts: 'attemptBoth' });
-            return resultat ? resultat.data : null;
+            const img = c.getContext('2d', { willReadFrequently: true }).getImageData(0, 0, c.width, c.height);
+            const r = window.jsQR(img.data, img.width, img.height, { inversionAttempts: 'attemptBoth' });
+            return r ? r.data : null;
+        }
+        function transformer(source, { angle = 0, miroir = false, zone = [0, 0, 1, 1], echelle = 1 }) {
+            const [zx, zy, zl, zh] = zone;
+            const sx = Math.round(source.width * zx), sy = Math.round(source.height * zy);
+            const sl = Math.round(source.width * zl), sh = Math.round(source.height * zh);
+            const k = Math.min(echelle, 2400 / Math.max(sl, sh));
+            const l = Math.max(1, Math.round(sl * k)), h = Math.max(1, Math.round(sh * k));
+            const quart = angle % 180 !== 0;
+            const c = document.createElement('canvas');
+            c.width = quart ? h : l; c.height = quart ? l : h;
+            const ctx = c.getContext('2d', { willReadFrequently: true });
+            ctx.fillStyle = '#fff'; ctx.fillRect(0, 0, c.width, c.height);
+            ctx.translate(c.width / 2, c.height / 2);
+            ctx.rotate(angle * Math.PI / 180);
+            if (miroir) ctx.scale(-1, 1);
+            ctx.imageSmoothingEnabled = echelle <= 1;
+            ctx.drawImage(source, sx, sy, sl, sh, -l / 2, -h / 2, l, h);
+            return c;
+        }
+        const ESSAIS_QR = (() => {
+            const liste = [0, 180, 90, 270].map(angle => ({ angle }));
+            liste.push({ angle: 0, miroir: true }, { angle: 180, miroir: true });
+            const zones = [[0, 0, .55, .55], [.45, 0, .55, .55], [0, .45, .55, .55], [.45, .45, .55, .55], [0, 0, 1, .5], [0, .5, 1, .5], [.2, .2, .6, .6]];
+            zones.forEach(zone => [0, 180].forEach(angle => liste.push({ angle, zone, echelle: 2 })));
+            return liste;
+        })();
+        async function lireQr() {
+            const sources = [canvasDetection, canvas].filter(Boolean);
+            for (const source of sources) {
+                for (let i = 0; i < ESSAIS_QR.length; i++) {
+                    if (i && i % 4 === 0) statut.textContent = `Recherche du QR code… (${Math.round(i / ESSAIS_QR.length * 100)} %)`;
+                    const contenu = await decoderCanvas(transformer(source, ESSAIS_QR[i]));
+                    if (contenu) return contenu;
+                    await new Promise(r => setTimeout(r, 0)); // laisse la page respirer entre deux essais
+                }
+            }
+            return null;
         }
 
         champ.addEventListener('change', async () => {
             const fichier = champ.files[0];
+            canvasDetection = null;
             document.getElementById('champ-apercu').value = '';
             document.getElementById('champ-qr').value = '';
             if (!fichier) return;

@@ -2,6 +2,7 @@
 require_once './includes/auth_bdd.php';
 require_once './includes/reglementation.php';
 require_once './includes/hydro.php';
+require_once './includes/saisie.php';
 
 $pdo = db();
 $id_user = (int) $_SESSION['user_id'];
@@ -44,6 +45,53 @@ function enregistrerSpotEtSession(PDO $pdo, int $id_user, array $s2): int
     return (int) $pdo->lastInsertId();
 }
 
+/** Mémorise une photo de la saisie en cours (la 1re photo datée fixe l'heure et la position de la session). */
+function ajouter_photo_session(string $chemin, array $meta): array
+{
+    $premiere_datee = $meta['date'] !== null && empty(array_filter($_SESSION['nouvelle_session']['photos'] ?? [], fn($p) => !empty($p['date'])));
+    if ($premiere_datee && empty($_SESSION['nouvelle_session']['step2'])) {
+        $_SESSION['nouvelle_session']['date_heure'] = date('Y-m-d\TH:i', strtotime($meta['date']));
+    }
+    if ($meta['lat'] !== null && ($_SESSION['nouvelle_session']['lat'] ?? null) === null && empty($_SESSION['nouvelle_session']['step2'])) {
+        $_SESSION['nouvelle_session']['lat'] = $meta['lat'];
+        $_SESSION['nouvelle_session']['lng'] = $meta['lng'];
+    }
+    $photo = [
+        'chemin' => $chemin,
+        'heure' => $meta['date'] ? date('H:i', strtotime($meta['date'])) : date('H:i'),
+        'date' => $meta['date'],
+        'lat' => $meta['lat'],
+        'lng' => $meta['lng'],
+        'source_gps' => $meta['source_gps'],
+    ];
+    $_SESSION['nouvelle_session']['photos'][] = $photo;
+    return $photo;
+}
+
+/** Saisie de l'étape 3 nettoyée, pour recréer les cartes après un refus du serveur. */
+function brouillon_prises(array $prises, array $photos_session): array
+{
+    $autorisees = array_flip(array_column($photos_session, 'chemin'));
+    $brouillon = [];
+    foreach (array_slice($prises, 0, 50) as $p) {
+        if (!is_array($p)) continue;
+        $brouillon[] = [
+            'id_espece' => id_ou_null($p['id_espece'] ?? null),
+            'quantite' => id_ou_null($p['quantite'] ?? null) ?? 1,
+            'taille' => nombre_ou_null($p['taille'] ?? null, 0, 100000),
+            'poids' => nombre_ou_null($p['poids'] ?? null, 0, 100000),
+            'heure' => heure_ou_null($p['heure'] ?? null),
+            'id_technique' => id_ou_null($p['id_technique'] ?? null),
+            'id_leurre' => id_ou_null($p['id_leurre'] ?? null),
+            'id_appat' => id_ou_null($p['id_appat'] ?? null),
+            'relache' => isset($p['relache']),
+            'confirme' => !empty($p['confirme_regles']),
+            'photos' => array_values(array_filter((array) ($p['photos'] ?? []), fn($c) => is_string($c) && isset($autorisees[$c]))),
+        ];
+    }
+    return $brouillon;
+}
+
 // =========================================================================
 // TRAITEMENT POST DES FORMULAIRES (AVANT AFFICHAGE)
 // =========================================================================
@@ -59,7 +107,7 @@ if ($etape === 1 && $_SERVER["REQUEST_METHOD"] == "POST") {
     ];
 
     $fichiers = isset($_FILES['photos']) ? fichiers_multiples($_FILES['photos']) : [];
-    foreach (array_slice($fichiers, 0, PHOTOS_MAX_PAR_ENVOI) as $fichier) {
+    foreach (array_slice($fichiers, 0, PHOTOS_MAX_PAR_ENVOI) as $i => $fichier) {
         if ($fichier['error'] === UPLOAD_ERR_NO_FILE) continue;
 
         $resultat = enregistrer_image_uploadee($fichier, $id_user);
@@ -67,35 +115,9 @@ if ($etape === 1 && $_SERVER["REQUEST_METHOD"] == "POST") {
             $_SESSION['nouvelle_session']['photos_refusees']++;
             continue;
         }
-
-        $exif = $resultat['exif'];
-        $heure_photo = date('H:i');
-        $lat = $lng = null;
-        $premiere = empty($_SESSION['nouvelle_session']['photos']);
-
-        if (is_array($exif)) {
-            if (isset($exif['DateTimeOriginal'])) {
-                $date_exif = DateTime::createFromFormat('Y:m:d H:i:s', $exif['DateTimeOriginal']);
-                if ($date_exif) {
-                    $heure_photo = $date_exif->format('H:i');
-                    if ($premiere) $_SESSION['nouvelle_session']['date_heure'] = $date_exif->format('Y-m-d\TH:i');
-                }
-            }
-            if (isset($exif['GPSLatitude'], $exif['GPSLongitude'])) {
-                $lat = getGps($exif['GPSLatitude'], $exif['GPSLatitudeRef'] ?? 'N');
-                $lng = getGps($exif['GPSLongitude'], $exif['GPSLongitudeRef'] ?? 'E');
-                if ($premiere) {
-                    $_SESSION['nouvelle_session']['lat'] = $lat;
-                    $_SESSION['nouvelle_session']['lng'] = $lng;
-                }
-            }
-        }
-        $_SESSION['nouvelle_session']['photos'][] = [
-            'chemin' => $resultat['chemin'],
-            'heure' => $heure_photo,
-            'lat' => $lat,
-            'lng' => $lng,
-        ];
+        // Date et GPS : EXIF lus par PHP, lecture de secours, puis ce que le navigateur a lu avant l'envoi
+        $meta = meta_photo($fichier['tmp_name'], $resultat['exif'], meta_client($_POST['photos_meta'] ?? null, $i));
+        ajouter_photo_session($resultat['chemin'], $meta);
     }
     $refusees = $_SESSION['nouvelle_session']['photos_refusees'] + max(0, count($fichiers) - PHOTOS_MAX_PAR_ENVOI);
     $_SESSION['nouvelle_session']['photos_refusees'] = $refusees;
@@ -236,16 +258,27 @@ if ($etape === 3 && $_SERVER["REQUEST_METHOD"] == "POST") {
         'lat' => $s2['lat_final'], 'lng' => $s2['lng_final'], 'date' => $date_base, 'departement' => $s2['departement'] ?? null,
     ]);
     $prises_a_controler = [];
+    $limites_bio = limites_biologiques($pdo);
+    $erreurs_bio = [];
     foreach ((array) ($_POST['prises'] ?? []) as $p) {
         if (!$id_esp = id_ou_null($p['id_espece'] ?? null)) continue;
         $prises_a_controler[] = [
             'espece' => $id_esp, 'taille' => nombre_ou_null($p['taille'] ?? null, 0, 1000),
             'quantite' => id_ou_null($p['quantite'] ?? null) ?? 1, 'relache' => isset($p['relache']), 'confirme' => !empty($p['confirme_regles']),
         ];
+        // Garde-fou biologique : taille ou poids impossibles pour l'espèce = refus (aucune confirmation possible)
+        foreach (controler_biologie($limites_bio, $id_esp, nombre_ou_null($p['taille'] ?? null, 0, 100000), nombre_ou_null($p['poids'] ?? null, 0, 100000)) as $a) {
+            if ($a['bloquant']) $erreurs_bio[] = ($limites_bio[$id_esp]['nom'] ?? 'Prise') . ' : ' . $a['texte'];
+        }
     }
     $non_conformes = prises_non_conformes(regles_resolues($pdo, $ctx), $ctx, $prises_a_controler, gardes_du_jour($pdo, $id_user, $date_base));
-    if ($non_conformes) {
-        $_SESSION['nouvelle_session']['erreurs'] = ["Une ou plusieurs prises gardées ne respectent pas la réglementation affichée. Relâche-les ou confirme chaque alerte avant d'enregistrer."];
+    if ($non_conformes || $erreurs_bio) {
+        $_SESSION['nouvelle_session']['erreurs'] = array_merge(
+            $erreurs_bio,
+            $non_conformes ? ["Une ou plusieurs prises gardées ne respectent pas la réglementation affichée. Relâche-les ou confirme chaque alerte avant d'enregistrer."] : []
+        );
+        // La saisie est conservée : les cartes sont recréées telles quelles à l'étape 3
+        $_SESSION['nouvelle_session']['brouillon'] = brouillon_prises((array) ($_POST['prises'] ?? []), $_SESSION['nouvelle_session']['photos'] ?? []);
         header('Location: nouvelle_session.php?etape=3');
         exit();
     }
@@ -416,6 +449,12 @@ if ($etape === 3) {
         'lat' => $s2['lat_final'] ?? null, 'lng' => $s2['lng_final'] ?? null, 'date' => $date_session, 'departement' => $s2['departement'] ?? null,
     ]);
     $garde_fou = donnees_garde_fou($ctx_regles, regles_resolues($pdo, $ctx_regles), gardes_du_jour($pdo, $id_user, $date_session));
+
+    // Garde-fou biologique, espèces les plus pêchées (accès rapide) et saisie refusée à recréer
+    $limites_bio = limites_biologiques_js($pdo);
+    $especes_favorites = especes_favorites($pdo, $id_user);
+    $brouillon = $session_data['brouillon'] ?? null;
+    unset($_SESSION['nouvelle_session']['brouillon']);
 }
 ?>
 
@@ -449,8 +488,8 @@ if ($etape === 3) {
         
         <?php if ($etape === 1): ?>
         <div class="card border-0 shadow-sm rounded-4 p-4 mb-3 text-center">
-            <h5 class="fw-bold mb-3 text-dark">Vos prises du jour</h5>
-            <p class="text-muted small mb-4">Uploadez vos photos. L'heure de capture individuelle sera extraite.</p>
+            <h5 class="fw-bold mb-3 text-dark">Tes prises du jour</h5>
+            <p class="text-muted small mb-4">Une photo par poisson : chacune crée une prise, avec son heure et sa position quand la photo les contient. Tu pourras ajouter d'autres photos de chaque poisson à l'étape 3.</p>
             <form action="nouvelle_session.php?etape=1" method="POST" enctype="multipart/form-data" id="form-photos">
                 <?= csrf_field() ?>
                 <div class="mb-4">
@@ -460,8 +499,10 @@ if ($etape === 3) {
                         <input type="file" id="photos-proxy" multiple accept="image/*" class="d-none">
                     </label>
                     <input type="file" id="photos-real" name="photos[]" multiple accept="image/jpeg,image/png,image/webp" class="d-none">
+                    <input type="hidden" name="photos_meta" id="photos-meta" value="[]">
                     <small class="text-muted d-block mt-2">JPEG, PNG ou WebP • 15 Mo max par photo • <?= e(ini_get('post_max_size')) ?> max par envoi</small>
                     <div id="preview-container" class="d-flex flex-wrap gap-2 mt-3 justify-content-center"></div>
+                    <p id="note-gps" class="note-gps small mt-3 mb-0 text-start" hidden></p>
                 </div>
                 <div class="d-grid mt-4">
                     <button type="submit" id="submit-step-1" class="btn btn-primary btn-lg rounded-pill fw-semibold shadow-sm custom-btn-submit">
@@ -483,6 +524,11 @@ if ($etape === 3) {
             <?php foreach ($erreurs_etape as $err): ?>
                 <div class="alert alert-danger rounded-4 border-0 shadow-sm small"><?= e($err) ?></div>
             <?php endforeach; ?>
+            <?php $nb_photos_s2 = count($session_data['photos'] ?? []); ?>
+            <?php if ($nb_photos_s2 && ($session_data['lat'] ?? null) === null): ?>
+                <p class="note-gps small mb-2"><span class="material-symbols-rounded" aria-hidden="true">location_off</span>
+                    Tes photos ne contiennent pas de position : touche la carte pour placer ton spot. Sur Android et iPhone, la galerie retire souvent le GPS des photos envoyées à un site web.</p>
+            <?php endif; ?>
             <div id="map" class="shadow-sm rounded-4 mb-3" style="height: 220px; z-index: 1;"></div>
             <div id="alerte-reserve" class="alerte-terrain alerte-danger mb-3" role="alert" hidden></div>
             <div id="alerte-crue" class="alerte-terrain mb-3" role="alert" hidden></div>
@@ -611,6 +657,7 @@ if ($etape === 3) {
             <span class="material-symbols-rounded" aria-hidden="true">gavel</span>
             <div>
                 <strong>Réglementation vérifiée pour :</strong> <?= e($ctx_regles['libelle']) ?>, le <?= e(date('d/m/Y', strtotime($date_session))) ?>
+                · <a href="reglementation.php<?= !empty($ctx_regles['departement']) ? '?departement=' . e($ctx_regles['departement']) : '' ?>" target="_blank" rel="noopener">voir les règles</a>
                 <?php if (empty($ctx_regles['categorie']) && in_array('eau_douce', $ctx_regles['milieux'], true) && ($ctx_regles['milieu'] ?? null) !== 'mer'): ?>
                     <small class="d-block">Indique la catégorie de ton spot (étape précédente ou Mes spots) pour des alertes précises.</small>
                 <?php endif; ?>
@@ -622,8 +669,8 @@ if ($etape === 3) {
             
             <div id="catches-container"></div>
             
-            <button type="button" class="btn btn-outline-primary btn-lg w-100 rounded-4 border-2 border-dashed fw-bold mb-4 py-3 shadow-sm" onclick="addCatchCard('no_photo')">
-                <span class="material-symbols-rounded align-middle me-2">add_circle</span> Ajouter une autre prise sans photo
+            <button type="button" class="btn btn-outline-primary btn-lg w-100 rounded-4 border-2 border-dashed fw-bold mb-4 py-3 shadow-sm" onclick="addCatchCard()">
+                <span class="material-symbols-rounded align-middle me-2">add_circle</span> Ajouter une autre prise
             </button>
 
             <div id="new-items-container"></div>
@@ -651,6 +698,7 @@ if ($etape === 3) {
 
     <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/js/bootstrap.bundle.min.js"></script>
     <?php if ($etape === 2): ?><script src="script/meteo_map.js"></script><?php endif; ?>
+    <?php if ($etape === 1 || $etape === 3): ?><script src="script/exif.js?v=4"></script><?php endif; ?>
     <?php include 'script/JS_session.php'; ?>
 </body>
 </html>

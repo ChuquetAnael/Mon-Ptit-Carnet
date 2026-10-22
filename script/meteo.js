@@ -205,6 +205,258 @@ document.addEventListener('DOMContentLoaded', function() {
         });
     }
 
+
+    // =====================================================================
+    // MARÉES : courbe et horaires d'une journée, sélecteur des 7 prochains jours.
+    // Les 7 jours ne sont demandés qu'au premier appui sur un autre jour (un seul appel,
+    // mis en cache côté serveur pour tous les membres : l'API marée est limitée).
+    // =====================================================================
+    const JOURS_COURTS = ['dim.', 'lun.', 'mar.', 'mer.', 'jeu.', 'ven.', 'sam.'];
+    let mareeSemaine = null, mareePosition = null, mareePort = null;
+
+    function dateLocaleIso(d) {
+        return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+    }
+
+    function evenementsMaree(extremaList) {
+        const evenements = [];
+        let coef = null;
+        (Array.isArray(extremaList) ? extremaList : []).forEach(pmbm => {
+            const typeRaw = String(pmbm.type || '').toUpperCase();
+            const isPM = (typeRaw === 'PM' || typeRaw === 'HIGH' || typeRaw === 'PLEINE_MER');
+            const m = String(pmbm.datetime || pmbm.time || pmbm.heure || '').match(/([0-2]\d:[0-5]\d)/);
+            const c = parseInt(pmbm.coef ?? pmbm.coeff, 10);
+            if (c > 0 && (coef === null || c > coef)) coef = c;
+            evenements.push({
+                type: isPM ? 'Pleine mer' : 'Basse mer', pm: isPM,
+                time: m ? m[1] : '--:--',
+                height: parseFloat(pmbm.height ?? pmbm.hauteur ?? pmbm.valeur ?? pmbm.h) || 0,
+                icon: isPM ? 'arrow_upward' : 'arrow_downward',
+                color: isPM ? 'text-primary' : 'text-info',
+            });
+        });
+        evenements.sort((a, b) => a.time.localeCompare(b.time));
+        return { evenements, coef };
+    }
+
+    function extremaDe(dataMareeFr) {
+        if (dataMareeFr.data && Array.isArray(dataMareeFr.data) && dataMareeFr.data.length > 0 && dataMareeFr.data[0].extrema) return dataMareeFr.data[0].extrema;
+        return dataMareeFr.extrema || [];
+    }
+
+    function preparerMarees(dataMareeFr, lat, lng) {
+        mareeSemaine = null;
+        mareePosition = { lat, lng };
+        if (dataMareeFr.error) {
+            tideContainer.innerHTML = `<div class="alert bg-white border-0 shadow-sm text-center rounded-4 p-4 mt-3"><span class="material-symbols-rounded text-muted" style="font-size:48px">waves</span><p class="text-muted mb-0">${escapeHtml(dataMareeFr.error)}</p></div>`;
+            return;
+        }
+        mareePort = { nom: dataMareeFr.port_name_custom || dataMareeFr.site_name || 'Port', distance: dataMareeFr.distance_km || 0 };
+        const { evenements } = evenementsMaree(extremaDe(dataMareeFr));
+        if (mareePort.distance > 10 || evenements.length === 0) {
+            const msg = mareePort.distance > 10
+                ? `Ce spot est situé à <b>${Math.round(mareePort.distance)} km</b> du littoral. Les données de marée ne s'appliquent pas ici.`
+                : `Données maritimes non disponibles pour ce secteur.`;
+            tideContainer.innerHTML = `
+                <div class="alert bg-white border-0 shadow-sm text-center rounded-4 p-5 mt-3">
+                    <span class="material-symbols-rounded text-muted mb-3" style="font-size: 60px;">waves</span>
+                    <h5 class="fw-bold text-dark">Eaux intérieures</h5>
+                    <p class="text-muted mb-0">${msg}</p>
+                </div>`;
+            return;
+        }
+
+        const aujourdhui = new Date();
+        let puces = '';
+        for (let i = 0; i < 7; i++) {
+            const d = new Date(aujourdhui.getFullYear(), aujourdhui.getMonth(), aujourdhui.getDate() + i);
+            puces += `<button type="button" class="jour-maree${i === 0 ? ' actif' : ''}" data-date="${dateLocaleIso(d)}" aria-pressed="${i === 0}">
+                <span>${i === 0 ? "Auj." : JOURS_COURTS[d.getDay()]}</span><strong>${d.getDate()}</strong><small class="coef-jour">${i === 0 ? '' : '·'}</small></button>`;
+        }
+        tideContainer.innerHTML = `
+            <div class="alert alert-primary bg-primary bg-opacity-10 border-0 rounded-4 mb-3 d-flex align-items-center">
+                <span class="material-symbols-rounded text-primary me-3" style="font-size: 28px;">anchor</span>
+                <div>
+                    <small class="d-block text-muted fw-bold" style="font-size: 0.75rem;">Port de référence</small>
+                    <span class="fw-bold text-primary d-block">${escapeHtml(mareePort.nom)}</span>
+                    <small class="text-secondary" style="font-size: 0.75rem;">Situé à ${escapeHtml(mareePort.distance)} km</small>
+                </div>
+            </div>
+            <div class="jours-maree mb-3" role="group" aria-label="Choisir le jour">${puces}</div>
+            <p class="small text-danger mb-2" id="maree-erreur" hidden></p>
+            <div id="maree-jour"></div>
+            <div id="maree-semaine" class="mt-4"></div>`;
+        tideContainer.querySelectorAll('.jour-maree').forEach(b => b.addEventListener('click', () => choisirJourMaree(b.dataset.date)));
+        afficherJourMaree(extremaDe(dataMareeFr), dateLocaleIso(aujourdhui), true);
+        const bouton = document.createElement('button');
+        bouton.type = 'button';
+        bouton.className = 'btn btn-light rounded-pill w-100 py-3 fw-bold';
+        bouton.innerHTML = '<span class="material-symbols-rounded align-middle me-1" aria-hidden="true">date_range</span> Voir les 7 prochains jours';
+        bouton.addEventListener('click', () => chargerSemaine().then(ok => { if (ok) bouton.remove(); }));
+        document.getElementById('maree-semaine').appendChild(bouton);
+    }
+
+    async function chargerSemaine() {
+        if (mareeSemaine) return true;
+        const err = document.getElementById('maree-erreur');
+        try {
+            const r = await fetch(`fetch_maree.php?lat=${encodeURIComponent(mareePosition.lat)}&lng=${encodeURIComponent(mareePosition.lng)}&jours=7`, { credentials: 'same-origin' });
+            const j = await r.json();
+            if (j.error) throw new Error(j.error);
+            mareeSemaine = {};
+            j.jours.forEach(jour => { mareeSemaine[jour.date] = jour; });
+            tideContainer.querySelectorAll('.jour-maree').forEach(b => {
+                const jour = mareeSemaine[b.dataset.date];
+                b.querySelector('.coef-jour').textContent = jour && jour.coef ? 'coef ' + jour.coef : '';
+            });
+            afficherSemaine(j.jours);
+            err.hidden = true;
+            return true;
+        } catch (e) {
+            err.textContent = 'Prévisions de la semaine indisponibles pour le moment : réessaie plus tard.';
+            err.hidden = false;
+            return false;
+        }
+    }
+
+    async function choisirJourMaree(date) {
+        tideContainer.querySelectorAll('.jour-maree').forEach(b => { b.classList.toggle('actif', b.dataset.date === date); b.setAttribute('aria-pressed', b.dataset.date === date); });
+        if (!(await chargerSemaine())) return;
+        const jour = mareeSemaine[date];
+        if (!jour || !jour.disponible) {
+            document.getElementById('maree-jour').innerHTML = '<p class="text-muted text-center my-4">Horaires indisponibles pour ce jour.</p>';
+            return;
+        }
+        afficherJourMaree(jour.extrema, date, date === dateLocaleIso(new Date()));
+    }
+
+    function afficherSemaine(jours) {
+        const lignes = jours.map(j => {
+            const d = new Date(j.date + 'T12:00:00');
+            const { evenements } = evenementsMaree(j.extrema);
+            const pm = evenements.filter(e => e.pm).map(e => e.time).join(' · ') || '–';
+            const bm = evenements.filter(e => !e.pm).map(e => e.time).join(' · ') || '–';
+            return `<tr data-date="${j.date}" tabindex="0">
+                <th scope="row">${JOURS_COURTS[d.getDay()]} ${d.getDate()}</th>
+                <td><span class="coef-badge${j.coef >= 95 ? ' fort' : (j.coef && j.coef < 45 ? ' faible' : '')}">${j.coef || '–'}</span></td>
+                <td>${pm}</td><td>${bm}</td></tr>`;
+        }).join('');
+        document.getElementById('maree-semaine').innerHTML = `
+            <h6 class="fw-bold text-secondary mb-2"><span class="material-symbols-rounded align-middle me-2" aria-hidden="true">date_range</span>Les 7 prochains jours</h6>
+            <div class="card border-0 shadow-sm rounded-4 bg-white overflow-hidden">
+                <table class="table table-sm mb-0 table-semaine-maree">
+                    <thead><tr><th scope="col">Jour</th><th scope="col">Coef</th><th scope="col">Pleines mers</th><th scope="col">Basses mers</th></tr></thead>
+                    <tbody>${lignes}</tbody>
+                </table>
+            </div>
+            <p class="small text-muted mt-2 mb-0">Touche un jour pour voir sa courbe. Vives-eaux à partir de 95, mortes-eaux sous 45.</p>`;
+        document.querySelectorAll('.table-semaine-maree tbody tr').forEach(tr => {
+            const aller = () => { choisirJourMaree(tr.dataset.date); document.querySelector('.jours-maree').scrollIntoView({ behavior: 'smooth', block: 'start' }); };
+            tr.addEventListener('click', aller);
+            tr.addEventListener('keydown', e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); aller(); } });
+        });
+    }
+
+    function afficherJourMaree(extremaList, dateIso, estAujourdhui) {
+        const { evenements: tideEvents, coef } = evenementsMaree(extremaList);
+        const zone = document.getElementById('maree-jour');
+        if (!tideEvents.length) { zone.innerHTML = '<p class="text-muted text-center my-4">Horaires indisponibles pour ce jour.</p>'; return; }
+
+        const exactExtrema = tideEvents.map(ev => { const p = ev.time.split(':'); return { t: parseInt(p[0], 10) + parseInt(p[1], 10) / 60, h: ev.height }; });
+        if (exactExtrema.length >= 2) {
+            const diffFirst = exactExtrema[1].t - exactExtrema[0].t;
+            exactExtrema.unshift({ t: exactExtrema[0].t - diffFirst, h: exactExtrema[1].h });
+            const diffLast = exactExtrema[exactExtrema.length - 1].t - exactExtrema[exactExtrema.length - 2].t;
+            exactExtrema.push({ t: exactExtrema[exactExtrema.length - 1].t + diffLast, h: exactExtrema[exactExtrema.length - 2].h });
+        }
+        const chartLabels = [], chartData = [];
+        for (let h = 0; h < 24; h++) {
+            for (let m = 0; m < 60; m += 15) {
+                const t = h + m / 60;
+                let e1 = null, e2 = null;
+                for (let i = 0; i < exactExtrema.length - 1; i++) {
+                    if (t >= exactExtrema[i].t && t <= exactExtrema[i + 1].t) { e1 = exactExtrema[i]; e2 = exactExtrema[i + 1]; break; }
+                }
+                if (e1 && e2) {
+                    const progress = (t - e1.t) / (e2.t - e1.t);
+                    chartLabels.push(String(h).padStart(2, '0') + ':' + String(m).padStart(2, '0'));
+                    chartData.push((e1.h + (e2.h - e1.h) * (1 - Math.cos(Math.PI * progress)) / 2).toFixed(2));
+                }
+            }
+        }
+
+        let etat = '';
+        if (estAujourdhui) {
+            const now = new Date(), nowT = now.getHours() + now.getMinutes() / 60;
+            etat = 'Indisponible';
+            for (let i = 0; i < exactExtrema.length - 1; i++) {
+                if (nowT >= exactExtrema[i].t && nowT <= exactExtrema[i + 1].t) {
+                    etat = exactExtrema[i].h < exactExtrema[i + 1].h ? 'Marée montante' : 'Marée descendante';
+                    if (nowT - exactExtrema[i].t < 0.75) etat = exactExtrema[i].h > exactExtrema[i + 1].h ? 'Haute (pleine mer)' : 'Basse mer';
+                    else if (exactExtrema[i + 1].t - nowT < 0.75) etat = exactExtrema[i + 1].h > exactExtrema[i].h ? 'Haute (pleine mer)' : 'Basse mer';
+                    break;
+                }
+            }
+        } else {
+            const premiere = tideEvents.find(e => e.pm);
+            etat = premiere ? 'Pleine mer à ' + premiere.time : '–';
+        }
+        const d = new Date(dateIso + 'T12:00:00');
+        const libelleJour = estAujourdhui ? "du jour" : `du ${JOURS_COURTS[d.getDay()]} ${d.getDate()}`;
+
+        let html = `
+            <div class="row g-3 mb-4">
+                <div class="col-6">
+                    <div class="card border-0 shadow-sm rounded-4 p-3 h-100 text-center bg-white border-bottom border-4 border-primary">
+                        <span class="material-symbols-rounded text-primary mb-1" style="font-size: 32px;">waves</span>
+                        <h6 class="fw-bold text-dark mb-0" style="font-size: 0.85rem;">${estAujourdhui ? 'État actuel' : 'Ce jour-là'}</h6>
+                        <span class="text-muted fw-semibold" style="font-size: 0.85rem;">${escapeHtml(etat)}</span>
+                    </div>
+                </div>
+                <div class="col-6">
+                    <div class="card border-0 shadow-sm rounded-4 p-3 h-100 text-center bg-white border-bottom border-4 border-info">
+                        <span class="material-symbols-rounded text-info mb-1" style="font-size: 32px;">speed</span>
+                        <h6 class="fw-bold text-dark mb-0" style="font-size: 0.85rem;">Coefficient</h6>
+                        <span class="text-dark fw-bold fs-5">${coef || '--'}</span>
+                    </div>
+                </div>
+            </div>
+            <div class="card border-0 shadow-sm rounded-4 bg-white p-3 mb-4">
+                <h6 class="fw-bold text-secondary mb-3 small"><span class="material-symbols-rounded align-middle me-2 fs-5">show_chart</span> Niveau de l'eau ${libelleJour}</h6>
+                <div style="height: 180px; width: 100%;"><canvas id="tideChart"></canvas></div>
+            </div>
+            <h6 class="fw-bold text-secondary mb-3"><span class="material-symbols-rounded align-middle me-2">schedule</span> Horaires ${libelleJour}</h6>
+            <div class="card border-0 shadow-sm rounded-4 bg-white overflow-hidden"><ul class="list-group list-group-flush">`;
+        tideEvents.forEach(ev => {
+            html += `
+                <li class="list-group-item d-flex justify-content-between align-items-center p-3">
+                    <div class="d-flex align-items-center">
+                        <div class="bg-light rounded-circle d-flex align-items-center justify-content-center me-3" style="width: 45px; height: 45px;">
+                            <span class="material-symbols-rounded ${ev.color}">${ev.icon}</span>
+                        </div>
+                        <span class="fw-bold text-dark">${ev.type}</span>
+                    </div>
+                    <div class="text-end">
+                        <span class="fw-bold text-dark fs-5 d-block">${ev.time}</span>
+                        <small class="text-muted fw-semibold">${ev.height.toFixed(2)} m</small>
+                    </div>
+                </li>`;
+        });
+        zone.innerHTML = html + '</ul></div>';
+
+        if (chartData.length > 0 && window.Chart) {
+            if (tideChartInstance) tideChartInstance.destroy();
+            tideChartInstance = new Chart(document.getElementById('tideChart').getContext('2d'), {
+                type: 'line',
+                data: { labels: chartLabels, datasets: [{ label: 'Hauteur (m)', data: chartData, borderColor: '#0dcaf0', backgroundColor: 'rgba(13, 202, 240, 0.25)', borderWidth: 3, fill: true, tension: 0.4, pointRadius: 0, pointHitRadius: 15 }] },
+                options: {
+                    responsive: true, maintainAspectRatio: false, plugins: { legend: { display: false } },
+                    scales: { x: { grid: { display: false }, ticks: { maxTicksLimit: 6, color: '#6c757d' } }, y: { display: false, min: Math.min(...chartData) - 0.5, max: Math.max(...chartData) + 0.5 } },
+                },
+            });
+        }
+    }
+
     function fetchConditions(lat, lng, locationName) {
         loader.innerHTML = loaderHtmlInitial;
         loader.style.display = 'block';
@@ -342,232 +594,8 @@ document.addEventListener('DOMContentLoaded', function() {
                 }
             }
 
-            // ==========================================
-            // 2. TRAITEMENT DE LA MARÉE
-            // ==========================================
-            let coef = "--";
-            let tideEvents = [];
-            let portName = "Port Inconnu";
-            let distPort = 0;
-
-            if (!dataMareeFr.error) {
-                portName = dataMareeFr.port_name_custom || dataMareeFr.site_name || "Port";
-                distPort = dataMareeFr.distance_km || 0;
-                
-                let extremaList = [];
-                if (dataMareeFr.data && Array.isArray(dataMareeFr.data) && dataMareeFr.data.length > 0 && dataMareeFr.data[0].extrema) {
-                    extremaList = dataMareeFr.data[0].extrema;
-                } else if (dataMareeFr.extrema) {
-                    extremaList = dataMareeFr.extrema;
-                }
-
-                if (Array.isArray(extremaList)) {
-                    extremaList.forEach(pmbm => {
-                        let typeRaw = String(pmbm.type || "").toUpperCase();
-                        let isPM = (typeRaw === 'PM' || typeRaw === 'HIGH' || typeRaw === 'PLEINE_MER');
-                        
-                        let timeStr = pmbm.time || "--:--";
-                        let timeMatch = String(pmbm.datetime || pmbm.time || pmbm.heure || "").match(/([0-2]\d:[0-5]\d)/);
-                        if (timeMatch) timeStr = timeMatch[1];
-
-                        let heightVal = parseFloat(pmbm.height ?? pmbm.hauteur ?? pmbm.valeur ?? pmbm.h) || 0;
-
-                        let cRaw = pmbm.coef ?? pmbm.coeff;
-                        if (cRaw !== undefined && cRaw !== null) {
-                            let parsedCoef = parseInt(cRaw);
-                            if (parsedCoef > 0) {
-                                if (coef === "--" || parsedCoef > parseInt(coef)) {
-                                    coef = parsedCoef; 
-                                }
-                            }
-                        }
-
-                        tideEvents.push({
-                            type: isPM ? 'Pleine Mer' : 'Basse Mer',
-                            time: timeStr,
-                            height: heightVal,
-                            icon: isPM ? 'arrow_upward' : 'arrow_downward',
-                            color: isPM ? 'text-primary' : 'text-info'
-                        });
-                    });
-                }
-            }
-
-            if (distPort > 10 || tideEvents.length === 0) {
-                let msg = distPort > 10
-                    ? `Ce spot est situé à <b>${Math.round(distPort)} km</b> du littoral. Les données de marée ne s'appliquent pas ici.` 
-                    : `Données maritimes non disponibles pour ce secteur.`;
-
-                tideContainer.innerHTML = `
-                <div class="alert bg-white border-0 shadow-sm text-center rounded-4 p-5 mt-3">
-                    <span class="material-symbols-rounded text-muted mb-3" style="font-size: 60px;">waves</span>
-                    <h5 class="fw-bold text-dark">Eaux intérieures</h5>
-                    <p class="text-muted mb-0">${msg}</p>
-                </div>`;
-                
-                loader.style.display = 'none';
-                content.style.display = 'block';
-                return;
-            }
-
-            tideEvents.sort((a, b) => a.time.localeCompare(b.time));
-
-            let exactExtrema = [];
-            tideEvents.forEach(ev => {
-                let p = ev.time.split(':');
-                exactExtrema.push({
-                    t: parseInt(p[0]) + parseInt(p[1]) / 60,
-                    h: ev.height
-                });
-            });
-
-            if (exactExtrema.length >= 2) {
-                let diffFirst = exactExtrema[1].t - exactExtrema[0].t;
-                exactExtrema.unshift({ t: exactExtrema[0].t - diffFirst, h: exactExtrema[1].h });
-                
-                let diffLast = exactExtrema[exactExtrema.length-1].t - exactExtrema[exactExtrema.length-2].t;
-                exactExtrema.push({ t: exactExtrema[exactExtrema.length-1].t + diffLast, h: exactExtrema[exactExtrema.length-2].h });
-            }
-
-            let chartLabels = [];
-            let chartData = [];
-
-            for (let h = 0; h < 24; h++) {
-                for (let m = 0; m < 60; m += 15) {
-                    let t = h + m / 60;
-                    let timeStr = h.toString().padStart(2, '0') + ':' + m.toString().padStart(2, '0');
-
-                    let e1 = null, e2 = null;
-                    for (let i = 0; i < exactExtrema.length - 1; i++) {
-                        if (t >= exactExtrema[i].t && t <= exactExtrema[i+1].t) {
-                            e1 = exactExtrema[i]; e2 = exactExtrema[i+1]; break;
-                        }
-                    }
-
-                    if (e1 && e2) {
-                        let progress = (t - e1.t) / (e2.t - e1.t);
-                        let val = e1.h + (e2.h - e1.h) * (1 - Math.cos(Math.PI * progress)) / 2;
-                        chartLabels.push(timeStr);
-                        chartData.push(val.toFixed(2));
-                    }
-                }
-            }
-
-            let currentState = "Indisponible";
-            let now = new Date();
-            let nowT = now.getHours() + now.getMinutes() / 60;
-
-            for (let i = 0; i < exactExtrema.length - 1; i++) {
-                if (nowT >= exactExtrema[i].t && nowT <= exactExtrema[i+1].t) {
-                    currentState = exactExtrema[i].h < exactExtrema[i+1].h ? "Marée Montante" : "Marée Descendante";
-
-                    if (nowT - exactExtrema[i].t < 0.75) {
-                        currentState = exactExtrema[i].h > exactExtrema[i+1].h ? "Haute (Pleine Mer)" : "Basse Mer";
-                    } else if (exactExtrema[i+1].t - nowT < 0.75) {
-                        currentState = exactExtrema[i+1].h > exactExtrema[i].h ? "Haute (Pleine Mer)" : "Basse Mer";
-                    }
-                    break;
-                }
-            }
-
-            let tideHtml = `
-            <div class="alert alert-primary bg-primary bg-opacity-10 border-0 rounded-4 mb-4 d-flex align-items-center">
-                <span class="material-symbols-rounded text-primary me-3" style="font-size: 28px;">anchor</span>
-                <div>
-                    <small class="d-block text-muted fw-bold text-uppercase" style="font-size: 0.65rem; letter-spacing: 1px;">Port de référence</small>
-                    <span class="fw-bold text-primary d-block">${escapeHtml(portName)}</span>
-                    <small class="text-secondary" style="font-size: 0.75rem;">Situé à ${distPort} km</small>
-                </div>
-            </div>
-
-            <div class="row g-3 mb-4">
-                <div class="col-6">
-                    <div class="card border-0 shadow-sm rounded-4 p-3 h-100 text-center bg-white border-bottom border-4 border-primary">
-                        <span class="material-symbols-rounded text-primary mb-1" style="font-size: 32px;">waves</span>
-                        <h6 class="fw-bold text-dark mb-0" style="font-size: 0.85rem;">État actuel</h6>
-                        <span class="text-muted fw-semibold" style="font-size: 0.8rem;">${currentState}</span>
-                    </div>
-                </div>
-                <div class="col-6">
-                    <div class="card border-0 shadow-sm rounded-4 p-3 h-100 text-center bg-white border-bottom border-4 border-info">
-                        <span class="material-symbols-rounded text-info mb-1" style="font-size: 32px;">speed</span>
-                        <h6 class="fw-bold text-dark mb-0" style="font-size: 0.85rem;">Coefficient</h6>
-                        <span class="text-dark fw-bold fs-5">${coef}</span>
-                    </div>
-                </div>
-            </div>
-
-            <div class="card border-0 shadow-sm rounded-4 bg-white p-3 mb-4">
-                <h6 class="fw-bold text-secondary text-uppercase mb-3 small"><span class="material-symbols-rounded align-middle me-2 fs-5">show_chart</span> Évolution du niveau de l'eau</h6>
-                <div style="height: 180px; width: 100%;">
-                    <canvas id="tideChart"></canvas>
-                </div>
-            </div>
-
-            <h6 class="fw-bold text-secondary text-uppercase mb-3"><span class="material-symbols-rounded align-middle me-2">schedule</span> Horaires officiels du jour</h6>
-            <div class="card border-0 shadow-sm rounded-4 bg-white overflow-hidden">
-                <ul class="list-group list-group-flush">
-            `;
-
-            tideEvents.forEach(ev => {
-                tideHtml += `
-                <li class="list-group-item d-flex justify-content-between align-items-center p-3">
-                    <div class="d-flex align-items-center">
-                        <div class="bg-light rounded-circle d-flex align-items-center justify-content-center me-3" style="width: 45px; height: 45px;">
-                            <span class="material-symbols-rounded ${ev.color}">${ev.icon}</span>
-                        </div>
-                        <span class="fw-bold text-dark">${ev.type}</span>
-                    </div>
-                    <div class="text-end">
-                        <span class="fw-bold text-dark fs-5 d-block">${ev.time}</span>
-                        <small class="text-muted fw-semibold">${ev.height.toFixed(2)}m</small>
-                    </div>
-                </li>`;
-            });
-            
-            tideHtml += `</ul></div>`;
-            tideContainer.innerHTML = tideHtml;
-
-            if (chartData.length > 0) {
-                if (tideChartInstance) tideChartInstance.destroy();
-                
-                const ctx = document.getElementById('tideChart').getContext('2d');
-                Chart.defaults.font.family = "'Poppins', sans-serif";
-                
-                tideChartInstance = new Chart(ctx, {
-                    type: 'line',
-                    data: {
-                        labels: chartLabels,
-                        datasets: [{
-                            label: 'Hauteur (m)',
-                            data: chartData,
-                            borderColor: '#0dcaf0',
-                            backgroundColor: 'rgba(13, 202, 240, 0.25)',
-                            borderWidth: 3,
-                            fill: true,
-                            tension: 0.4,
-                            pointRadius: 0, 
-                            pointHitRadius: 15
-                        }]
-                    },
-                    options: {
-                        responsive: true,
-                        maintainAspectRatio: false,
-                        plugins: { legend: { display: false } },
-                        scales: {
-                            x: { 
-                                grid: { display: false }, 
-                                ticks: { maxTicksLimit: 6, color: '#6c757d' } 
-                            },
-                            y: { 
-                                display: false, 
-                                min: Math.min(...chartData) - 0.5, 
-                                max: Math.max(...chartData) + 0.5 
-                            }
-                        }
-                    }
-                });
-            }
+            // 2. MARÉE : aujourd'hui, puis les 7 prochains jours à la demande
+            preparerMarees(dataMareeFr, lat, lng);
 
             loader.style.display = 'none';
             content.style.display = 'block';

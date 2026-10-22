@@ -1,5 +1,6 @@
 <?php
 require_once './includes/auth_bdd.php';
+require_once './includes/profil.php';
 
 $id_session = id_ou_null($_GET['id'] ?? null);
 if (!$id_session) {
@@ -82,11 +83,24 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             if ($stmtNb->fetchColumn() >= SESSIONS_EPINGLEES_MAX) {
                 $message_erreur = "Tu as déjà " . SESSIONS_EPINGLEES_MAX . " sessions épinglées. Retires-en une d'abord.";
             } else {
-                $pdo->prepare("UPDATE session_p SET EPINGLEE = 1, DATE_EPINGLE = NOW() WHERE ID_SESSION = ? AND ID_UTILISATEUR = ?")->execute([$id_session, $id_user]);
-                $message_succes = "Session épinglée sur ton profil : les autres membres voient ses prises et photos, jamais le lieu ni le GPS.";
+                // Épingler une session la rend visible
+                $pdo->prepare("UPDATE session_p SET EPINGLEE = 1, DATE_EPINGLE = NOW(), MASQUEE = 0 WHERE ID_SESSION = ? AND ID_UTILISATEUR = ?")->execute([$id_session, $id_user]);
+                $session['MASQUEE'] = 0;
+                $message_succes = "Session épinglée en haut de ton profil : les autres membres voient ses prises et photos, jamais le lieu ni le GPS.";
             }
         }
         $session['EPINGLEE'] = $session['EPINGLEE'] ? 0 : (isset($message_erreur) ? 0 : 1);
+    }
+
+    // D. Masquer / afficher la session sur le profil public (masquer retire aussi l'épingle)
+    if (isset($_POST['toggle_masque'])) {
+        $masquer = !$session['MASQUEE'];
+        changer_visibilite_session($pdo, $id_user, $id_session, $masquer);
+        $session['MASQUEE'] = $masquer ? 1 : 0;
+        if ($masquer) $session['EPINGLEE'] = 0;
+        $message_succes = $masquer
+            ? "Session masquée : toi seul la vois. Elle n'apparaît ni sur ton profil, ni dans le fil, ni dans les classements."
+            : "Session visible sur ton profil (sans le lieu ni le GPS).";
     }
 }
 
@@ -211,6 +225,13 @@ if ($coords = lire_localisation($session['LOCALISATION'])) {
                     <span class="material-symbols-rounded" style="font-size: 20px;">push_pin</span>
                 </button>
             </form>
+            <form method="POST" class="m-0">
+                <?= csrf_field() ?>
+                <button type="submit" name="toggle_masque" value="1" class="btn btn-sm <?= $session['MASQUEE'] ? 'btn-dark' : 'btn-light text-primary' ?> rounded-circle p-2 shadow-sm d-flex align-items-center justify-content-center"
+                        title="<?= $session['MASQUEE'] ? 'Session masquée : la rendre visible' : 'Session visible : la masquer aux autres membres' ?>" aria-pressed="<?= $session['MASQUEE'] ? 'true' : 'false' ?>">
+                    <span class="material-symbols-rounded" style="font-size: 20px;"><?= $session['MASQUEE'] ? 'visibility_off' : 'visibility' ?></span>
+                </button>
+            </form>
             <a href="editer_session.php?id=<?= (int) $id_session ?>" class="btn btn-sm btn-light rounded-circle text-primary p-2 shadow-sm d-flex align-items-center justify-content-center" title="Modifier la session">
                 <span class="material-symbols-rounded" style="font-size: 20px;">edit</span>
             </a>
@@ -245,10 +266,20 @@ if ($coords = lire_localisation($session['LOCALISATION'])) {
                 <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
             </div>
         <?php endif; ?>
-        <?php if ($session['EPINGLEE']): ?>
+        <?php if ($session['MASQUEE']): ?>
+            <div class="alert bg-dark bg-opacity-10 border-0 rounded-4 small text-center mb-4">
+                <span class="material-symbols-rounded align-middle fs-6 me-1">visibility_off</span>
+                Session masquée : toi seul la vois.
+            </div>
+        <?php elseif ($session['EPINGLEE']): ?>
             <div class="alert alert-warning bg-warning bg-opacity-10 border-0 rounded-4 small text-center mb-4">
                 <span class="material-symbols-rounded align-middle fs-6 me-1">push_pin</span>
-                Session épinglée sur <a href="profil.php?id=<?= $id_user ?>" class="fw-semibold">ton profil public</a> (lieu et GPS jamais affichés).
+                Session épinglée en haut de <a href="profil.php?id=<?= $id_user ?>&amp;apercu=1" class="fw-semibold">ton profil public</a> (lieu et GPS jamais affichés).
+            </div>
+        <?php else: ?>
+            <div class="alert alert-light border-0 rounded-4 small text-center mb-4">
+                <span class="material-symbols-rounded align-middle fs-6 me-1">visibility</span>
+                Visible sur <a href="profil.php?id=<?= $id_user ?>&amp;apercu=1" class="fw-semibold">ton profil public</a>, sans le lieu ni le GPS. L'œil en haut permet de la masquer.
             </div>
         <?php endif; ?>
 
@@ -386,23 +417,12 @@ if ($coords = lire_localisation($session['LOCALISATION'])) {
 
                                     <!-- GESTION DE L'IMAGE DE LA PRISE -->
                                     <?php $photos_p = $photos_par_prise[$p['ID_PRISE']] ?? []; ?>
-                                    <?php if (!empty($photos_p)): ?>
-                                        <?php if (count($photos_p) === 1): ?>
-                                            <img src="<?= e($photos_p[0]['CHEMIN']) ?>" alt="Prise" class="catch-img">
-                                        <?php else: ?>
-                                            <div id="carousel-prise-<?= (int) $p['ID_PRISE'] ?>" class="carousel slide" data-bs-touch="true">
-                                                <div class="carousel-inner">
-                                                    <?php foreach ($photos_p as $k => $ph): ?>
-                                                        <div class="carousel-item <?= $k === 0 ? 'active' : '' ?>">
-                                                            <img src="<?= e($ph['CHEMIN']) ?>" alt="Photo <?= $k + 1 ?>" class="catch-img d-block w-100">
-                                                        </div>
-                                                    <?php endforeach; ?>
-                                                </div>
-                                                <button class="carousel-control-prev" type="button" data-bs-target="#carousel-prise-<?= (int) $p['ID_PRISE'] ?>" data-bs-slide="prev"><span class="carousel-control-prev-icon"></span></button>
-                                                <button class="carousel-control-next" type="button" data-bs-target="#carousel-prise-<?= (int) $p['ID_PRISE'] ?>" data-bs-slide="next"><span class="carousel-control-next-icon"></span></button>
-                                                <span class="badge bg-dark bg-opacity-75 position-absolute bottom-0 start-0 m-2"><?= count($photos_p) ?> photos</span>
-                                            </div>
-                                        <?php endif; ?>
+                                    <?php if (!empty($photos_p)):
+                                        $galerie = array_map(fn($ph) => ['src' => $ph['CHEMIN'], 'titre' => titre_prise($p['NOM_COM'], $p['TAILLE_CM'], $p['POIDS_KG'])], $photos_p); ?>
+                                        <button type="button" class="photo-prise-bouton" data-visionneuse data-photos="<?= attr_visionneuse($galerie) ?>" aria-label="Voir <?= count($photos_p) > 1 ? 'les ' . count($photos_p) . ' photos' : 'la photo' ?> en grand">
+                                            <img src="<?= e($photos_p[0]['CHEMIN']) ?>" alt="Prise" class="catch-img" loading="lazy">
+                                            <?php if (count($photos_p) > 1): ?><span class="badge-photos"><span class="material-symbols-rounded" aria-hidden="true">photo_library</span><?= count($photos_p) ?></span><?php endif; ?>
+                                        </button>
                                         <?php if (array_filter($photos_p, fn($ph) => $ph['STATUT_MODERATION'] !== 'visible')): ?>
                                             <div class="small text-danger px-4 pt-2"><span class="material-symbols-rounded align-middle fs-6">visibility_off</span> Une photo a été masquée par la modération.</div>
                                         <?php endif; ?>

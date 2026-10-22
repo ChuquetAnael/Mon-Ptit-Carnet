@@ -33,7 +33,7 @@
 
     // 4. Liste détaillée des espèces
     $stmtEspeces = $pdo->prepare("
-        SELECT e.NOM_COM, e.ICONE_CHEMIN, 
+        SELECT e.ID_ESPECE, e.NOM_COM, e.ICONE_CHEMIN, 
                SUM(COALESCE(p.QUANTITE, 1)) as nb,
                MAX(p.TAILLE_CM) as pb_cm
         FROM prise p 
@@ -124,31 +124,140 @@
     // NOUVELLES STATISTIQUES EN RATIO (Prises / Session)
     // =========================================================================
 
-    // 8. Heures d'activité (Boucle à 24h)
-    // Moyenne de prises par session pour chaque heure. On divise par le nombre TOTAL de sessions :
-    // diviser par les seules sessions ayant pris à cette heure gonflait les heures peu pêchées.
-    $stmtHeures = $pdo->prepare("
-        SELECT HOUR(p.DATE_HEURE) as heure, 
-               (SUM(COALESCE(p.QUANTITE, 1)) / :nb_sessions) as ratio
-        FROM prise p 
-        JOIN session_p s ON p.ID_SESSION = s.ID_SESSION 
-        WHERE s.ID_UTILISATEUR = :id_user AND p.DATE_HEURE IS NOT NULL 
-        GROUP BY heure ORDER BY heure ASC
+    // 8. Heures d'activité : répartition des prises et rendement réel par heure de la journée.
+    //    - répartition : part de tes poissons pris à chaque heure (le total fait 100 %) ;
+    //    - rendement : poissons pris à cette heure ÷ heures réellement passées au bord de l'eau à cette heure-là.
+    //    Le temps de pêche vient du début et de la fin des sessions (à défaut : jusqu'à la dernière prise, 1 h minimum).
+    //    Avant (V0.2/V0.3), on divisait par le nombre total de sessions : 22 h affichait « 0,09 prise/session »
+    //    même si tu n'avais jamais pêché à 22 h.
+    $stmtH = $pdo->prepare("
+        SELECT HOUR(p.DATE_HEURE) AS heure, SUM(COALESCE(p.QUANTITE, 1)) AS poissons
+        FROM prise p JOIN session_p s ON p.ID_SESSION = s.ID_SESSION
+        WHERE s.ID_UTILISATEUR = :id_user AND p.DATE_HEURE IS NOT NULL
+        GROUP BY HOUR(p.DATE_HEURE)
     ");
-    $stmtHeures->execute(['id_user' => $id_user, 'nb_sessions' => max(1, (int) $total_sessions)]);
-    $data_heures = $stmtHeures->fetchAll(PDO::FETCH_ASSOC);
-    
-    $labels_heures = [];
-    $valeurs_heures_touches = array_fill(0, 25, 0);
-    
-    foreach ($data_heures as $h) { 
-        $valeurs_heures_touches[(int)$h['heure']] = round((float)$h['ratio'], 2); 
+    $stmtH->execute(['id_user' => $id_user]);
+    $poissons_heure = array_fill(0, 24, 0);
+    foreach ($stmtH->fetchAll(PDO::FETCH_ASSOC) as $h) $poissons_heure[(int) $h['heure']] = (int) $h['poissons'];
+
+    $stmtE = $pdo->prepare("
+        SELECT s.DATE_DEBUT, s.DATE_FIN, MAX(p.DATE_HEURE) AS derniere_prise
+        FROM session_p s LEFT JOIN prise p ON p.ID_SESSION = s.ID_SESSION
+        WHERE s.ID_UTILISATEUR = :id_user
+        GROUP BY s.ID_SESSION, s.DATE_DEBUT, s.DATE_FIN
+    ");
+    $stmtE->execute(['id_user' => $id_user]);
+    $minutes_heure = array_fill(0, 24, 0);
+    foreach ($stmtE->fetchAll(PDO::FETCH_ASSOC) as $se) {
+        $a = strtotime($se['DATE_DEBUT']);
+        $b = $se['DATE_FIN'] ? strtotime($se['DATE_FIN']) : null;
+        if (!$b || $b <= $a) {
+            $b = $se['derniere_prise'] ? strtotime($se['derniere_prise']) : $a;
+            $b = max($b, $a + 3600); // durée inconnue : au moins une heure
+        }
+        $b = min($b, $a + 72 * 3600);
+        for ($t = $a; $t < $b;) {
+            $fin_heure = strtotime(date('Y-m-d H:00:00', $t)) + 3600; // fuseau local (heures d'été / d'hiver)
+            $morceau = min($b, $fin_heure) - $t;
+            $minutes_heure[(int) date('G', $t)] += $morceau / 60;
+            $t += max(60, $morceau);
+        }
     }
-    // Copie la valeur de 0h dans l'index 24 pour boucler visuellement
-    $valeurs_heures_touches[24] = $valeurs_heures_touches[0];
-    
-    for ($i = 0; $i <= 23; $i++) { $labels_heures[] = $i . 'h'; }
-    $labels_heures[] = '0h'; // Affiche explicitement "0h" à la fin
+    $total_heures_poissons = array_sum($poissons_heure);
+    $labels_heures = [];
+    $repartition_heures = [];
+    $rendement_heures = [];
+    $meilleure_heure = null;
+    $heure_plus_de_poissons = null;
+    for ($h = 0; $h < 24; $h++) {
+        $labels_heures[] = $h . 'h';
+        $repartition_heures[] = $total_heures_poissons ? round($poissons_heure[$h] / $total_heures_poissons * 100, 1) : 0;
+        $heures_passees = $minutes_heure[$h] / 60;
+        // Moins d'une heure passée à ce créneau : pas assez de recul pour un rendement
+        $rendement_heures[] = $heures_passees >= 1 ? round($poissons_heure[$h] / $heures_passees, 2) : null;
+        if ($heures_passees >= 2 && $poissons_heure[$h] > 0 && ($meilleure_heure === null || $poissons_heure[$h] / $heures_passees > $meilleure_heure['rendement'])) {
+            $meilleure_heure = ['heure' => $h, 'rendement' => $poissons_heure[$h] / $heures_passees, 'heures' => $heures_passees, 'poissons' => $poissons_heure[$h]];
+        }
+        if ($poissons_heure[$h] > 0 && ($heure_plus_de_poissons === null || $poissons_heure[$h] > $poissons_heure[$heure_plus_de_poissons])) $heure_plus_de_poissons = $h;
+    }
+
+    // 8 bis. Détail par espèce (fenêtre ouverte en touchant une espèce du bilan)
+    $date_prise = "COALESCE(p.DATE_HEURE, s.DATE_DEBUT)";
+    $stmtD = $pdo->prepare("
+        SELECT p.ID_ESPECE, COUNT(*) AS lignes,
+               SUM(COALESCE(p.QUANTITE, 1)) AS poissons,
+               SUM(CASE WHEN p.RELACHE = 1 THEN COALESCE(p.QUANTITE, 1) ELSE 0 END) AS relaches,
+               SUM(CASE WHEN p.TAILLE_CM > 0 THEN p.TAILLE_CM * COALESCE(p.QUANTITE, 1) END) / SUM(CASE WHEN p.TAILLE_CM > 0 THEN COALESCE(p.QUANTITE, 1) END) AS taille_moy,
+               SUM(CASE WHEN p.TAILLE_CM > 0 THEN COALESCE(p.QUANTITE, 1) END) AS nb_mesures,
+               SUM(CASE WHEN p.POIDS_KG > 0 THEN p.POIDS_KG * COALESCE(p.QUANTITE, 1) END) / SUM(CASE WHEN p.POIDS_KG > 0 THEN COALESCE(p.QUANTITE, 1) END) AS poids_moy,
+               SUM(CASE WHEN p.POIDS_KG > 0 THEN COALESCE(p.QUANTITE, 1) END) AS nb_pesees,
+               MAX(p.POIDS_KG) AS pb_kg, MIN($date_prise) AS premiere, MAX($date_prise) AS derniere
+        FROM prise p JOIN session_p s ON p.ID_SESSION = s.ID_SESSION
+        WHERE s.ID_UTILISATEUR = :id_user
+        GROUP BY p.ID_ESPECE
+    ");
+    $stmtD->execute(['id_user' => $id_user]);
+    $stats_especes = [];
+    foreach ($stmtD->fetchAll(PDO::FETCH_ASSOC) as $d) {
+        $stats_especes[(int) $d['ID_ESPECE']] = [
+            'poissons' => (int) $d['poissons'], 'lignes' => (int) $d['lignes'],
+            'nokill' => $d['poissons'] > 0 ? (int) round($d['relaches'] / $d['poissons'] * 100) : 0,
+            'taille_moy' => $d['taille_moy'] !== null ? round((float) $d['taille_moy'], 1) : null, 'nb_mesures' => (int) $d['nb_mesures'],
+            'poids_moy' => $d['poids_moy'] !== null ? round((float) $d['poids_moy'], 2) : null, 'nb_pesees' => (int) $d['nb_pesees'],
+            'pb_kg' => $d['pb_kg'] !== null && (float) $d['pb_kg'] > 0 ? (float) $d['pb_kg'] : null,
+            'premiere' => $d['premiere'] ? date('d/m/Y', strtotime($d['premiere'])) : null,
+            'derniere' => $d['derniere'] ? date('d/m/Y', strtotime($d['derniere'])) : null,
+            'mois' => array_fill(0, 12, 0), 'heures' => array_fill(0, 24, 0),
+            'leurre' => null, 'appat' => null, 'technique' => null, 'pb' => null,
+        ];
+    }
+    // Matériel et technique les plus efficaces (nombre de poissons)
+    foreach ([
+        'leurre' => "SELECT p.ID_ESPECE, l.NOM_LEURRE AS nom, SUM(COALESCE(p.QUANTITE, 1)) AS nb FROM prise p JOIN session_p s ON p.ID_SESSION = s.ID_SESSION JOIN leurre l ON l.ID_LEURRE = p.ID_LEURRE WHERE s.ID_UTILISATEUR = :id_user GROUP BY p.ID_ESPECE, l.ID_LEURRE, l.NOM_LEURRE",
+        'appat' => "SELECT p.ID_ESPECE, a.NOM_APPAT AS nom, SUM(COALESCE(p.QUANTITE, 1)) AS nb FROM prise p JOIN session_p s ON p.ID_SESSION = s.ID_SESSION JOIN appat a ON a.ID_APPAT = p.ID_APPAT WHERE s.ID_UTILISATEUR = :id_user GROUP BY p.ID_ESPECE, a.ID_APPAT, a.NOM_APPAT",
+        'technique' => "SELECT p.ID_ESPECE, t.NOM_TECHNIQUE AS nom, SUM(COALESCE(p.QUANTITE, 1)) AS nb FROM prise p JOIN session_p s ON p.ID_SESSION = s.ID_SESSION JOIN technique t ON t.ID_TECHNIQUE = p.ID_TECHNIQUE WHERE s.ID_UTILISATEUR = :id_user GROUP BY p.ID_ESPECE, t.ID_TECHNIQUE, t.NOM_TECHNIQUE",
+    ] as $cle => $sql) {
+        $st = $pdo->prepare($sql);
+        $st->execute(['id_user' => $id_user]);
+        foreach ($st->fetchAll(PDO::FETCH_ASSOC) as $r) {
+            $id = (int) $r['ID_ESPECE'];
+            if (isset($stats_especes[$id]) && (!$stats_especes[$id][$cle] || $r['nb'] > $stats_especes[$id][$cle]['nb'])) {
+                $stats_especes[$id][$cle] = ['nom' => $r['nom'], 'nb' => (int) $r['nb']];
+            }
+        }
+    }
+    // Saisonnalité (mois) et heures
+    $st = $pdo->prepare("SELECT p.ID_ESPECE, MONTH($date_prise) AS m, HOUR(p.DATE_HEURE) AS h, SUM(COALESCE(p.QUANTITE, 1)) AS nb FROM prise p JOIN session_p s ON p.ID_SESSION = s.ID_SESSION WHERE s.ID_UTILISATEUR = :id_user GROUP BY p.ID_ESPECE, MONTH($date_prise), HOUR(p.DATE_HEURE)");
+    $st->execute(['id_user' => $id_user]);
+    foreach ($st->fetchAll(PDO::FETCH_ASSOC) as $r) {
+        $id = (int) $r['ID_ESPECE'];
+        if (!isset($stats_especes[$id])) continue;
+        $stats_especes[$id]['mois'][(int) $r['m'] - 1] += (int) $r['nb'];
+        if ($r['h'] !== null) $stats_especes[$id]['heures'][(int) $r['h']] += (int) $r['nb'];
+    }
+    // Record personnel (plus grande taille) avec sa date et ses photos
+    $st = $pdo->prepare("
+        SELECT x.* FROM (
+            SELECT p.ID_PRISE, p.ID_ESPECE, p.TAILLE_CM, p.POIDS_KG, s.DATE_DEBUT,
+                   ROW_NUMBER() OVER (PARTITION BY p.ID_ESPECE ORDER BY p.TAILLE_CM DESC, p.POIDS_KG DESC, s.DATE_DEBUT) AS rang
+            FROM prise p JOIN session_p s ON p.ID_SESSION = s.ID_SESSION
+            WHERE s.ID_UTILISATEUR = :id_user AND p.TAILLE_CM > 0
+        ) x WHERE x.rang = 1
+    ");
+    $st->execute(['id_user' => $id_user]);
+    $pb_prises = [];
+    foreach ($st->fetchAll(PDO::FETCH_ASSOC) as $r) {
+        $id = (int) $r['ID_ESPECE'];
+        if (!isset($stats_especes[$id])) continue;
+        $stats_especes[$id]['pb'] = ['taille' => (int) $r['TAILLE_CM'], 'poids' => $r['POIDS_KG'] !== null && (float) $r['POIDS_KG'] > 0 ? (float) $r['POIDS_KG'] : null,
+            'date' => date('d/m/Y', strtotime($r['DATE_DEBUT'])), 'photos' => []];
+        $pb_prises[(int) $r['ID_PRISE']] = $id;
+    }
+    if ($pb_prises) {
+        $st = $pdo->prepare("SELECT ID_PRISE, CHEMIN FROM photo_prise WHERE ID_PRISE IN (" . implode(',', array_fill(0, count($pb_prises), '?')) . ") ORDER BY ORDRE, ID_PHOTO");
+        $st->execute(array_keys($pb_prises));
+        foreach ($st->fetchAll(PDO::FETCH_ASSOC) as $ph) $stats_especes[$pb_prises[(int) $ph['ID_PRISE']]]['pb']['photos'][] = $ph['CHEMIN'];
+    }
 
     // 9. Météo (Ciel) - Ratio Prises/Session
     $stmtCiel = $pdo->prepare("
