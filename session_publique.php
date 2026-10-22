@@ -1,7 +1,8 @@
 <?php
-// Vue publique (lecture seule) d'une session ÉPINGLÉE par un membre.
+// Vue publique (lecture seule) d'une session visible d'un membre (non masquée par son auteur).
 // Confidentialité (CGU) : ni nom du spot, ni carte, ni coordonnées GPS ne sont affichés.
 require_once './includes/auth_bdd.php';
+require_once './includes/profil.php';
 
 $pdo = db();
 $id_user = (int) $_SESSION['user_id'];
@@ -9,16 +10,17 @@ $id_session = id_ou_null($_GET['id'] ?? null);
 
 $stmt = $pdo->prepare("
     SELECT s.ID_SESSION, s.ID_UTILISATEUR, s.DATE_DEBUT, s.DATE_FIN, s.TEMPERATURE, s.PRESSION_HPA, s.VITESSE_VENT,
-           s.DIREC_VENT, s.DESCRIP_CIEL, s.COEFF_MAREE, s.DESC_MAREE, ts.NOM_TYPE_SESSION, u.PSEUDO, u.PDP_CHEMIN
+           s.DIREC_VENT, s.DESCRIP_CIEL, s.COEFF_MAREE, s.DESC_MAREE, s.MILIEU, s.CODE_DEPARTEMENT, s.FACADE,
+           ts.NOM_TYPE_SESSION, u.PSEUDO, u.PDP_CHEMIN
     FROM session_p s
     JOIN utilisateur u ON s.ID_UTILISATEUR = u.ID_UTILISATEUR
     LEFT JOIN type_session ts ON s.ID_TYPE_SESSION = ts.ID_TYPE_SESSION
-    WHERE s.ID_SESSION = ? AND s.EPINGLEE = 1
+    WHERE s.ID_SESSION = ? AND (s.MASQUEE = 0 OR s.ID_UTILISATEUR = ?)
 ");
-$stmt->execute([$id_session]);
+$stmt->execute([$id_session, $id_user]);
 $session = $stmt->fetch(PDO::FETCH_ASSOC);
 if (!$session) {
-    app_page_message('Session introuvable', "Cette session n'existe pas ou n'est plus épinglée par son auteur.", 404);
+    app_page_message('Session introuvable', "Cette session n'existe pas ou son auteur l'a masquée.", 404);
 }
 $est_moi = ((int) $session['ID_UTILISATEUR'] === $id_user);
 
@@ -85,7 +87,9 @@ $url_retour = 'session_publique.php?id=' . (int) $id_session;
                 <?php if ($session['VITESSE_VENT'] !== null): ?><span class="badge bg-light text-dark rounded-pill px-3 py-2"><?= e($session['VITESSE_VENT']) ?> km/h <?= e($session['DIREC_VENT']) ?></span><?php endif; ?>
                 <?php if ($session['DESC_MAREE']): ?><span class="badge bg-info bg-opacity-10 text-info rounded-pill px-3 py-2">Marée <?= e(mb_strtolower($session['DESC_MAREE'])) ?><?= $session['COEFF_MAREE'] ? ' • coef ' . e($session['COEFF_MAREE']) : '' ?></span><?php endif; ?>
             </div>
-            <p class="small text-muted text-center mt-3 mb-0"><span class="material-symbols-rounded align-middle fs-6">lock</span> Le lieu de pêche reste privé.</p>
+            <p class="small text-muted text-center mt-3 mb-0"><span class="material-symbols-rounded align-middle fs-6">lock</span>
+                <?php $lieu = lieu_large($session['MILIEU'], $session['CODE_DEPARTEMENT'], $session['FACADE']); ?>
+                <?= $lieu ? e($lieu) . ' · le' : 'Le' ?> lieu de pêche précis reste privé.</p>
         </div>
 
         <?php if (empty($prises)): ?>
@@ -99,22 +103,28 @@ $url_retour = 'session_publique.php?id=' . (int) $id_session;
                     <?php $photos_p = $photos_par_prise[$p['ID_PRISE']] ?? []; ?>
                     <div class="col-12 col-md-6">
                         <div class="card border-0 shadow-sm rounded-4 h-100 bg-white overflow-hidden">
-                            <?php foreach ($photos_p as $k => $ph): ?>
-                                <div class="position-relative <?= $k > 0 ? 'd-none photo-supp-' . (int) $p['ID_PRISE'] : '' ?>">
-                                    <img src="<?= e($ph['CHEMIN']) ?>" alt="Photo de <?= e($p['NOM_COM']) ?>" class="w-100" style="height: 240px; object-fit: cover;">
-                                    <?php if ($est_moi && $ph['STATUT_MODERATION'] !== 'visible'): ?>
-                                        <span class="badge bg-danger position-absolute top-0 start-0 m-2">Masquée par la modération</span>
+                            <?php if ($photos_p):
+                                $galerie = array_map(fn($ph) => ['src' => $ph['CHEMIN'], 'titre' => titre_prise($p['NOM_COM'], $p['TAILLE_CM'], $p['POIDS_KG'])], $photos_p); ?>
+                                <div class="position-relative">
+                                    <button type="button" class="photo-prise-bouton" data-visionneuse data-photos="<?= attr_visionneuse($galerie) ?>" aria-label="Voir <?= count($photos_p) > 1 ? 'les ' . count($photos_p) . ' photos' : 'la photo' ?> en grand">
+                                        <img src="<?= e($photos_p[0]['CHEMIN']) ?>" alt="Photo de <?= e($p['NOM_COM']) ?>" class="w-100" style="height: 240px; object-fit: cover;" loading="lazy">
+                                        <?php if (count($photos_p) > 1): ?><span class="badge-photos"><span class="material-symbols-rounded" aria-hidden="true">photo_library</span><?= count($photos_p) ?></span><?php endif; ?>
+                                    </button>
+                                    <?php if ($est_moi && array_filter($photos_p, fn($ph) => $ph['STATUT_MODERATION'] !== 'visible')): ?>
+                                        <span class="badge bg-danger position-absolute top-0 start-0 m-2">Une photo est masquée par la modération</span>
                                     <?php elseif (!$est_moi): ?>
-                                        <button type="button" class="btn btn-sm btn-dark bg-opacity-50 rounded-pill position-absolute top-0 end-0 m-2" data-bs-toggle="modal" data-bs-target="#modalSignalement" data-type="photo_prise" data-photo="<?= (int) $ph['ID_PHOTO'] ?>" title="Signaler cette photo">
-                                            <span class="material-symbols-rounded align-middle" style="font-size:16px;">flag</span>
-                                        </button>
+                                        <div class="dropdown position-absolute top-0 end-0 m-2">
+                                            <button type="button" class="btn btn-sm btn-dark bg-opacity-50 rounded-pill" data-bs-toggle="dropdown" aria-label="Signaler une photo" title="Signaler une photo">
+                                                <span class="material-symbols-rounded align-middle" style="font-size:16px;">flag</span>
+                                            </button>
+                                            <ul class="dropdown-menu dropdown-menu-end rounded-4 shadow border-0">
+                                                <?php foreach ($photos_p as $k => $ph): ?>
+                                                    <li><button class="dropdown-item" type="button" data-bs-toggle="modal" data-bs-target="#modalSignalement" data-type="photo_prise" data-photo="<?= (int) $ph['ID_PHOTO'] ?>">Signaler la photo <?= $k + 1 ?></button></li>
+                                                <?php endforeach; ?>
+                                            </ul>
+                                        </div>
                                     <?php endif; ?>
                                 </div>
-                            <?php endforeach; ?>
-                            <?php if (count($photos_p) > 1): ?>
-                                <button type="button" class="btn btn-sm btn-light rounded-0 w-100" onclick="document.querySelectorAll('.photo-supp-<?= (int) $p['ID_PRISE'] ?>').forEach(el => el.classList.toggle('d-none'));">
-                                    Voir les <?= count($photos_p) ?> photos
-                                </button>
                             <?php endif; ?>
                             <div class="card-body p-4">
                                 <h2 class="h5 fw-bold text-dark mb-2 d-flex align-items-center">
